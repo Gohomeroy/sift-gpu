@@ -22,22 +22,84 @@ export default async function OrgLayout({
   ]);
 
   const supabase = await createClient();
-  const [{ data: profile }, { data: isPlatformAdmin }, { data: notifications }] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("display_name, avatar_url")
-        .eq("id", user!.id)
-        .single(),
-      supabase.rpc("is_platform_admin"),
-      supabase
-        .from("notifications")
-        .select("*")
-        .eq("organization_id", ctx.org.id)
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ]);
+  const [
+    { data: profile },
+    { data: isPlatformAdmin },
+    { data: notifications },
+    { data: dmThreadRows },
+    { data: railMemberRows },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user!.id)
+      .single(),
+    supabase.rpc("is_platform_admin"),
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("organization_id", ctx.org.id)
+      .eq("user_id", user!.id)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("dm_threads")
+      .select("*")
+      .eq("organization_id", ctx.org.id)
+      .order("created_at"),
+    supabase
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", ctx.org.id)
+      .eq("status", "active"),
+  ]);
+
+  // My DM threads + the other side's identity, for the workspace rail.
+  const myThreads = (dmThreadRows ?? []).filter(
+    (t) => t.user_a_id === user!.id || t.user_b_id === user!.id,
+  );
+  const otherIds = [
+    ...new Set(
+      myThreads.map((t) =>
+        t.user_a_id === user!.id ? t.user_b_id : t.user_a_id,
+      ),
+    ),
+  ];
+  const { data: dmPeople } =
+    otherIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url")
+          .in("id", otherIds)
+      : { data: [] };
+  const dmPersonById = new Map((dmPeople ?? []).map((p) => [p.id, p]));
+  const dmThreadsForRail = myThreads.map((t) => {
+    const otherId =
+      t.user_a_id === user!.id ? t.user_b_id : t.user_a_id;
+    const person = dmPersonById.get(otherId);
+    return {
+      id: t.id as string,
+      other_name: (person?.display_name as string | undefined) ?? "member",
+      other_avatar: (person?.avatar_url as string | null | undefined) ?? null,
+    };
+  });
+
+  // Pickable members for the rail's new-DM picker.
+  const railMemberIds = (railMemberRows ?? []).map((m) => m.user_id as string);
+  const { data: railMemberProfiles } =
+    railMemberIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url")
+          .in("id", railMemberIds)
+      : { data: [] };
+  const membersForRail = (railMemberProfiles ?? [])
+    .map((p) => ({
+      user_id: p.id,
+      display_name: p.display_name as string,
+      avatar_url: (p.avatar_url as string | null | undefined) ?? null,
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
 
   const notificationRows = (notifications ?? []) as unknown as NotificationView[];
   const unread = notificationRows.filter((n) => !n.read_at).length;
@@ -56,6 +118,9 @@ export default async function OrgLayout({
           <OrgNav
             slug={slug}
             permissions={permsForNav}
+            dmThreads={dmThreadsForRail}
+            organizationId={ctx.org.id}
+            members={membersForRail}
           />
         </div>
         <NotificationBell
@@ -96,7 +161,13 @@ export default async function OrgLayout({
         </div>
         <OrgSwitcher current={current} orgs={switcherOrgs} />
         <div className="mt-2 -mx-1">
-          <OrgNav slug={slug} permissions={permsForNav} />
+          <OrgNav
+            slug={slug}
+            permissions={permsForNav}
+            dmThreads={dmThreadsForRail}
+            organizationId={ctx.org.id}
+            members={membersForRail}
+          />
         </div>
       </header>
 

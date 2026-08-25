@@ -31,7 +31,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { ProfileCard } from "@/components/profile-card";
 import { useOrgPresence } from "@/lib/use-presence";
 import { ChannelSidebar } from "./channel-sidebar";
-import { DmList, NewDmModal, type DmThreadView } from "./dm-room";
+import { NewDmModal, type DmThreadView } from "./dm-room";
 import type { ChatChannel } from "@/lib/types";
 
 export type ChatMessageView = {
@@ -157,6 +157,7 @@ export function ChatRoom({
   initialProfiles,
   members,
   dmThreads,
+  activeDmId = null,
   currentUserId,
   canSend,
   canModerate,
@@ -169,6 +170,7 @@ export function ChatRoom({
   initialProfiles: Record<string, ProfileInfo>;
   members: ChatMember[];
   dmThreads: DmThreadView[];
+  activeDmId?: string | null;
   currentUserId: string;
   canSend: boolean;
   canModerate: boolean;
@@ -444,12 +446,6 @@ export function ChatRoom({
             activeSlug={null}
             canModerate={canModerate}
           />
-          <DmList
-            slug={slug}
-            threads={dmThreads}
-            activeThreadId={null}
-            onNew={() => setNewDmOpen(true)}
-          />
         </div>
         <EmptyState
           icon={<Hash size={18} />}
@@ -496,7 +492,7 @@ export function ChatRoom({
   return (
     <div className="grid min-h-0 gap-4 md:grid-cols-[200px_1fr]">
       <div className="min-h-0 md:overflow-y-auto">
-        {/* Mobile: horizontal channel chips */}
+        {/* Mobile: horizontal channel + DM chips (desktop rail owns DMs) */}
         <div className="flex gap-1 overflow-x-auto pb-1 md:hidden">
           {channels.map((ch) => (
             <a
@@ -511,6 +507,26 @@ export function ChatRoom({
               # {ch.name}
             </a>
           ))}
+          {dmThreads.map((t) => (
+            <a
+              key={t.id}
+              href={`/o/${slug}/chat?dm=${t.id}`}
+              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                activeDmId === t.id
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-line text-muted hover:border-line-strong hover:text-ink"
+              }`}
+            >
+              @ {t.other_name}
+            </a>
+          ))}
+          <button
+            type="button"
+            onClick={() => setNewDmOpen(true)}
+            className="shrink-0 cursor-pointer rounded-full border border-dashed border-line-strong px-3 py-1 text-xs text-faint transition-colors hover:border-faint hover:text-ink"
+          >
+            + DM
+          </button>
         </div>
         <div className="hidden md:block">
           <ChannelSidebar
@@ -519,12 +535,6 @@ export function ChatRoom({
             channels={channels}
             activeSlug={activeChannel.slug}
             canModerate={canModerate}
-          />
-          <DmList
-            slug={slug}
-            threads={dmThreads}
-            activeThreadId={null}
-            onNew={() => setNewDmOpen(true)}
           />
         </div>
       </div>

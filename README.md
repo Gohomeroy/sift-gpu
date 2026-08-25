@@ -46,7 +46,10 @@ Whop-style campaigns: manage_campaigns holders post briefs with banners
 with a hard per-video cap, computed and shown per entry · platform-tracked
 views (refresh buttons, no self-reporting) · account verification: clippers
 link TikTok/YouTube/IG handles via a bio code scan, and entries must come
-from a verified linked account · 13th permission key in the matrix.
+from a verified linked account · 13th permission key in the matrix ·
+optional campaign budgets · append-only view-history snapshots with
+spend/growth analytics RPCs (campaign_analytics, org_campaign_analytics,
+record_entry_views — payout math lives in SQL).
 
 **Stage 9 — AI Clipper (shell complete, worker pending).**
 Paste a long-form link → queued clip jobs with live status · plan-gated

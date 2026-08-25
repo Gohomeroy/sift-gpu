@@ -19,10 +19,17 @@ Direction contract:
 - FORM: Operate mode, restrained color strategy, hairline borders over shadows.
 
 ## Type
-- Instrument Sans (UI + headings) — Söhne-adjacent neo-grotesque; display
-  tracking -0.02em, weights 500–600.
+- SF-first system stack — `-apple-system` / "SF Pro Display" / "SF Pro Text"
+  with Segoe UI/Roboto fallbacks. Real San Francisco renders natively on
+  Apple hardware (where editors live); zero webfont payload, zero licensing
+  exposure. Display tracking -0.02em, weights 500–600.
 - IBM Plex Mono — timecodes, slugs, IDs, counts, timestamps, table numerics,
   micro-labels (10–11px uppercase, tracking 0.08em).
+- Golden-ratio scale (base 16px, step φ = 1.618), tokens in globals.css:
+  `text-phi-heading` 1.618rem/1.3 · `text-phi-title` 2.618rem/1.15 ·
+  `text-phi-display` 4.236rem/1.05 · `text-phi-body` 1rem with φ leading
+  (1.618) on Persuade surfaces. Operate app chrome stays at the dense 14px
+  base; the scale governs marketing/display type.
 
 ## Tokens (CSS variables, re-declared under `.dark`)
 canvas · panel · raised · overlay · line · line-strong · ink · muted · faint ·

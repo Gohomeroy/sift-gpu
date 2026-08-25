@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Chip } from "@/components/ui/chip";
 import { requireOrgContext } from "@/lib/org-context";
 import { createClient } from "@/lib/supabase/server";
 import { can } from "@/lib/permissions";
-import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty";
 import { DangerButton } from "@/components/ui/danger-button";
 import { RealtimeRefresher } from "../jobs/realtime-refresher";
 import { deleteClipJobAction } from "@/app/actions/clipper";
-import { NewJobForm, ClipCard } from "./clipper-parts";
+import { NewJobForm, ClipCard, JobProgress, EditHint } from "./clipper-parts";
 import { timeAgo } from "@/lib/utils";
 import type { Clip, ClipJob } from "@/lib/types";
 
@@ -126,29 +125,34 @@ export default async function ClipperPage({
                   {job.error && (
                     <p className="mt-1.5 text-xs text-err">{job.error}</p>
                   )}
+                  <JobProgress job={job} />
                   {job.status === "queued" && (
                     <p className="mt-1.5 text-xs text-muted">
-                      Waiting for a clipping worker —{" "}
-                      <Link
-                        href="https://github.com/"
-                        className="text-accent hover:underline"
-                      >
-                        connect yours
-                      </Link>{" "}
-                      to process the queue (see WORKER.md).
+                      Waiting for a clipping worker — start one with{" "}
+                      <code className="rounded bg-raised px-1 py-0.5 font-mono text-[10px]">
+                        python main.py
+                      </code>{" "}
+                      (see WORKER.md).
                     </p>
                   )}
 
                   {clips.length > 0 && (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {clips.map((clip) => (
-                        <ClipCard
-                          key={clip.id}
-                          clip={clip}
-                          url={urlByClip.get(clip.id) ?? null}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {clips.map((clip) => (
+                          <ClipCard
+                            key={clip.id}
+                            clip={clip}
+                            url={urlByClip.get(clip.id) ?? null}
+                          />
+                        ))}
+                      </div>
+                      {job.status === "completed" && (
+                        <div className="mt-3">
+                          <EditHint />
+                        </div>
+                      )}
+                    </>
                   )}
                 </li>
               );

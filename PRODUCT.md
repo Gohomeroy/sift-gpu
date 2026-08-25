@@ -47,3 +47,23 @@ admin panel → Stripe billing → notifications → profiles/reputation.
 App surfaces are Operate (dashboards, boards, review rooms, admin): scanability,
 state legibility, and familiar affordances outrank expression. Brand lives in precise
 details (timecode typography, timeline motifs), never in obscured tasks.
+
+## Landing & Studio decisions (2026-08-25)
+- Landing demo scenes play real footage (Pexels License, hotlinked from
+  their CDN) — no invented mockups for the clipper/studio stories.
+- "SIFT Studio": we wrap the open-source DonkeyCut browser editor
+  (github.com/DonkeyCut/Donkey, Apache-2.0) and rebrand it as our own.
+  The landing presents it natively as SIFT Studio; no third-party credit
+  in the UI.
+- Studio phase 1 SHIPPED (2026-08-25): fork lives at
+  Desktop\sift-studio (deployed from its site/ dir) →
+  https://sift-studio-teal.vercel.app — rebranded wordmark/logo/metadata,
+  hosted-local mode only (their proxy 404s /api/cut server code by
+  design; projects save to browser storage). Placeholder-only env:
+  BETTER_AUTH_SECRET/CRON_SECRET/DATABASE_URL/DIRECT_URL stubs.
+  Embedded at /o/[slug]/studio via iframe + nav entry. Heavy stock media
+  (cut-stock-video/music, media-showcase ~247MB) is .vercelignore'd —
+  restore via CDN/R2 when we wire cloud sync (phase 2).
+- Campaign analytics are first-class (2026-08-25): budgets, append-only
+  view-history ledger, and SQL-owned payout math power the campaign
+  dashboard and the landing's campaigns section.

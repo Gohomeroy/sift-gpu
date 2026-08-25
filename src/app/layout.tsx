@@ -1,12 +1,7 @@
 import type { Metadata } from "next";
-import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
-
-const instrumentSans = Instrument_Sans({
-  variable: "--font-instrument",
-  subsets: ["latin"],
-});
 
 const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
@@ -31,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${instrumentSans.variable} ${plexMono.variable} font-sans antialiased`}
+        className={`${plexMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>{children}</ThemeProvider>
       </body>

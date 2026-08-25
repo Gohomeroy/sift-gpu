@@ -42,3 +42,15 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# clip worker
+worker/.venv/
+worker/tmp/
+worker/.env
+worker/*.log
+worker/models/
+worker/remotion/node_modules/
+worker/remotion/server.log
+worker/remotion/out/
+__pycache__/
+*.pyc

@@ -156,6 +156,7 @@ export type Campaign = {
   banner_path: string | null;
   rate_per_1k_views: number | null;
   max_payout_per_entry: number | null;
+  budget: number | null;
   status: "open" | "closed";
   created_by: string;
   created_at: string;
@@ -183,6 +184,10 @@ export type ClipJob = {
   source_url: string;
   title: string;
   status: "queued" | "processing" | "completed" | "failed";
+  provider: "local" | "reka";
+  stage: string;
+  progress: number;
+  caption_style: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -198,5 +203,9 @@ export type Clip = {
   viral_score: number | null;
   caption_style: string | null;
   storage_path: string;
+  caption: string | null;
+  hashtags: string[] | string | null;
+  reasoning: string | null;
+  provider: "local" | "reka";
   created_at: string;
 };

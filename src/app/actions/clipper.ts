@@ -12,6 +12,7 @@ export async function createClipJobAction(
   const slug = String(formData.get("slug") ?? "");
   const sourceUrl = String(formData.get("source_url") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
+  const captionStyle = String(formData.get("caption_style") ?? "hormozi");
 
   if (!sourceUrl.startsWith("http")) {
     return { error: "Paste the full https link to the long-form video.", success: null };
@@ -24,6 +25,7 @@ export async function createClipJobAction(
     p_org: formData.get("organization_id"),
     p_source_url: sourceUrl,
     p_title: title,
+    p_caption_style: captionStyle,
   });
 
   if (error) return { error: error.message, success: null };

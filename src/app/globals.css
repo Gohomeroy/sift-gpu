@@ -64,8 +64,31 @@
   --color-ok: var(--ok);
   --color-err: var(--err);
   --color-info: var(--info);
-  --font-sans: var(--font-instrument);
+  /* SF-first system stack: real SF Pro renders natively on Apple
+     platforms; Segoe UI covers Windows. No webfont payload. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-plex-mono);
+
+  /*
+   * Golden-ratio type scale ("aesthetic law"): base 16px, step φ = 1.618.
+   *   phi-heading  1.618rem (25.9px)  section heads
+   *   phi-title    2.618rem (41.9px)  page titles
+   *   phi-display  4.236rem (67.8px)  hero display
+   * Line heights tighten as size grows; display keeps the -0.02em contract.
+   */
+  --text-phi-heading: 1.618rem;
+  --text-phi-heading--line-height: 1.3;
+  --text-phi-heading--letter-spacing: -0.01em;
+  --text-phi-title: 2.618rem;
+  --text-phi-title--line-height: 1.15;
+  --text-phi-title--letter-spacing: -0.02em;
+  --text-phi-display: 4.236rem;
+  --text-phi-display--line-height: 1.05;
+  --text-phi-display--letter-spacing: -0.02em;
+  --text-phi-body: 1rem;
+  --text-phi-body--line-height: 1.618;
 }
 
 html {
@@ -132,4 +155,579 @@ select:focus {
   margin-left: 2px;
   background: var(--accent);
   vertical-align: -0.08em;
+}
+
+/*
+ * Landing "mechanism" scene — one authored loop (8s): the reviewer
+ * scrubs, stops on 00:45, and a comment pins to that exact second.
+ * Opacity + transform only; natural state = completed story, so
+ * reduced-motion users still see the whole explanation.
+ */
+.sift-scene .sift-playhead {
+  transform: translateX(var(--pin-x));
+  animation: sift-sweep 8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.sift-scene .sift-note {
+  animation: sift-note 8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.sift-scene .sift-pin-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sift-ping 8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-sweep {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  36% {
+    transform: translateX(var(--pin-x));
+    opacity: 1;
+  }
+  80% {
+    transform: translateX(var(--pin-x));
+    opacity: 1;
+  }
+  86% {
+    transform: translateX(var(--pin-x));
+    opacity: 0;
+  }
+  87% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  93% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes sift-note {
+  0%,
+  34% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  42% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  84% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+
+@keyframes sift-ping {
+  0%,
+  35% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  38% {
+    opacity: 0.5;
+    transform: scale(0.45);
+  }
+  48% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sift-scene .sift-playhead,
+  .sift-scene .sift-note,
+  .sift-scene .sift-pin-ring {
+    animation: none;
+  }
+}
+
+/*
+ * Landing scene choreography (clipper + studio). Each scene runs one
+ * looping timeline; a shared "reset veil" fades the panel out at the
+ * end of every cycle so children can snap back to their entrance
+ * state invisibly — loops never jump. Natural DOM state = the finished
+ * story, so prefers-reduced-motion sees the complete result statically.
+ */
+
+/* ---- Clipper workflow (16s cycle) ------------------------------------
+ * Narrates the real flow: link types itself → Generate clips clicks →
+ * analyzing stages run while skeletons shimmer → the three cuts resolve.
+ * Elements that only exist mid-loop carry opacity-0 as their NATURAL
+ * state (reduced-motion/no-JS users see only the finished story);
+ * keyframes bring them back during their window.
+ * ---------------------------------------------------------------------- */
+
+.sift-wf-typed {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  max-width: 34ch;
+  animation: sift-wf-type 16s steps(33) infinite;
+}
+
+@keyframes sift-wf-type {
+  0%,
+  2% {
+    max-width: 0;
+  }
+  16%,
+  100% {
+    max-width: 34ch;
+  }
+}
+
+.sift-wf-caret {
+  animation: sift-wf-caret 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-caret {
+  0%,
+  1% {
+    opacity: 0;
+  }
+  2%,
+  16% {
+    opacity: 1;
+  }
+  17%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-idle {
+  animation: sift-wf-idle 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-idle {
+  0%,
+  18% {
+    opacity: 1;
+  }
+  19%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sift-wf-ping 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-wf-ping {
+  0%,
+  18% {
+    opacity: 0.5;
+    transform: scale(0.5);
+  }
+  25% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+.sift-wf-loading {
+  animation: sift-wf-loading 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-loading {
+  0%,
+  20% {
+    opacity: 0;
+  }
+  21%,
+  56% {
+    opacity: 1;
+  }
+  57%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-status {
+  animation: sift-wf-status 16s steps(1) infinite;
+}
+
+.sift-wf-status-1 {
+  --st-in: 24%;
+  --st-out: 34%;
+}
+.sift-wf-status-2 {
+  --st-in: 36%;
+  --st-out: 44%;
+}
+.sift-wf-status-3 {
+  --st-in: 46%;
+  --st-out: 54%;
+}
+
+@keyframes sift-wf-status {
+  0%,
+  var(--st-in) {
+    opacity: 0;
+  }
+  calc(var(--st-in) + 1%),
+  var(--st-out) {
+    opacity: 1;
+  }
+  calc(var(--st-out) + 1%),
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-skel {
+  animation: sift-wf-skel 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-skel {
+  0%,
+  22% {
+    opacity: 0;
+  }
+  23%,
+  56% {
+    opacity: 1;
+  }
+  57%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-shimmer {
+  animation: sift-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes sift-shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.sift-wf-done {
+  animation: sift-wf-done 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-wf-done {
+  0%,
+  57% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  62%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sift-wf-card-a,
+.sift-wf-card-b,
+.sift-wf-card-c {
+  animation: sift-wf-card-a 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-wf-card-a {
+  0%,
+  59% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  65%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sift-wf-card-b {
+  animation-name: sift-wf-card-b;
+}
+
+@keyframes sift-wf-card-b {
+  0%,
+  66% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  72%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sift-wf-card-c {
+  animation-name: sift-wf-card-c;
+}
+
+@keyframes sift-wf-card-c {
+  0%,
+  73% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  79%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sift-wf-q0 {
+  animation: sift-wf-q0 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-q0 {
+  0%,
+  61% {
+    opacity: 1;
+  }
+  62%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sift-wf-q3 {
+  animation: sift-wf-q3 16s steps(1) infinite;
+}
+
+@keyframes sift-wf-q3 {
+  0%,
+  61% {
+    opacity: 0;
+  }
+  62%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.sift-pan {
+  animation: sift-pan 9s ease-in-out infinite alternate;
+}
+
+@keyframes sift-pan {
+  from {
+    transform: scale(1.08) translateX(-2%);
+  }
+  to {
+    transform: scale(1.16) translateX(2%);
+  }
+}
+
+/* ---- Studio scene (16s cycle) ---------------------------------------- */
+.sift-reset-16 {
+  animation: sift-veil-16 16s linear infinite;
+}
+
+@keyframes sift-veil-16 {
+  0%,
+  92% {
+    opacity: 1;
+  }
+  95%,
+  99.9% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.sift-ed-user {
+  animation: sift-ed-user 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-user {
+  0%,
+  2% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  6%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sift-ed-dots {
+  animation: sift-ed-dots 16s ease-out infinite;
+}
+
+@keyframes sift-ed-dots {
+  0%,
+  7% {
+    opacity: 0;
+  }
+  9%,
+  20% {
+    opacity: 1;
+  }
+  23%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Trimmed state is the natural state; the animation starts untrimmed. */
+.sift-ed-block-a {
+  transform-origin: left;
+  animation: sift-ed-block-a 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-block-a {
+  0%,
+  24% {
+    transform: scaleX(1);
+  }
+  32%,
+  100% {
+    transform: scaleX(0.62);
+  }
+}
+
+.sift-ed-block-b {
+  animation: sift-ed-block-b 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-block-b {
+  0%,
+  32% {
+    transform: translateX(24px);
+  }
+  40%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.sift-ed-block-c {
+  animation: sift-ed-block-c 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-block-c {
+  0%,
+  36% {
+    transform: translateX(24px);
+  }
+  44%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.sift-ed-head {
+  animation: sift-ed-head 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-head {
+  0%,
+  24% {
+    transform: translateX(0);
+  }
+  44%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.sift-ed-bot {
+  animation: sift-ed-bot 16s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes sift-ed-bot {
+  0%,
+  48% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  54%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Growth chart bars: one-shot rise, staggered per bar via --d. */
+@keyframes sift-bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.sift-bar-grow {
+  transform-origin: bottom;
+  animation: sift-bar-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sift-scene .sift-playhead,
+  .sift-scene .sift-note,
+  .sift-scene .sift-pin-ring,
+  .sift-wf-typed,
+  .sift-wf-caret,
+  .sift-wf-idle,
+  .sift-wf-ping,
+  .sift-wf-loading,
+  .sift-wf-status,
+  .sift-wf-skel,
+  .sift-wf-shimmer,
+  .sift-wf-done,
+  .sift-wf-card-a,
+  .sift-wf-card-b,
+  .sift-wf-card-c,
+  .sift-wf-q0,
+  .sift-wf-q3,
+  .sift-pan,
+  .sift-reset-16,
+  .sift-ed-user,
+  .sift-ed-dots,
+  .sift-ed-block-a,
+  .sift-ed-block-b,
+  .sift-ed-block-c,
+  .sift-ed-head,
+  .sift-ed-bot,
+  .sift-bar-grow {
+    animation: none;
+  }
 }

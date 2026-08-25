@@ -131,8 +131,6 @@ export default async function ChatPage({
           organizationId={org.id}
           channels={channelRows}
           canModerate={canModerate}
-          threads={dmThreads}
-          members={pickable}
           activeThread={{
             id: activeThread.id,
             other_name: otherPerson?.display_name ?? "member",
@@ -206,6 +204,7 @@ export default async function ChatPage({
         initialProfiles={initialProfiles}
         members={chatMembers}
         dmThreads={dmThreads}
+        activeDmId={dm ?? null}
         currentUserId={member.user_id}
         canSend={canSend}
         canModerate={canModerate}

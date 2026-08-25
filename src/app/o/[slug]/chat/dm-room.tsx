@@ -44,8 +44,6 @@ export function DmRoom({
   organizationId,
   channels,
   canModerate,
-  threads,
-  members,
   activeThread,
   otherUserId,
   otherUser,
@@ -57,8 +55,6 @@ export function DmRoom({
   organizationId: string;
   channels: ChatChannel[];
   canModerate: boolean;
-  threads: DmThreadView[];
-  members: PickableMember[];
   activeThread: DmThreadView | null;
   otherUserId: string | null;
   otherUser: ProfileInfo | null;
@@ -75,7 +71,6 @@ export function DmRoom({
   const [adopted, setAdopted] = useState(initialMessages);
   const [live, setLive] = useState<LiveState>("connecting");
   const [replyTo, setReplyTo] = useState<DmMessageView | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   if (adopted !== initialMessages) {
@@ -244,12 +239,6 @@ export function DmRoom({
           activeSlug={null}
           canModerate={canModerate}
         />
-        <DmList
-          slug={slug}
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onNew={() => setPickerOpen(true)}
-        />
       </div>
 
       <section className="grid min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border border-line bg-panel">
@@ -400,14 +389,6 @@ export function DmRoom({
           )}
         </div>
       </section>
-
-      <NewDmModal
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        slug={slug}
-        organizationId={organizationId}
-        members={members.filter((m) => m.user_id !== currentUserId)}
-      />
 
       {profileUserId && (
         <ProfileCard

@@ -277,7 +277,7 @@ export async function refreshEntryViewsAction(formData: FormData) {
 
   const { data: entry } = await supabase
     .from("campaign_entries")
-    .select("platform, url, views")
+    .select("platform, url")
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return;
@@ -285,10 +285,11 @@ export async function refreshEntryViewsAction(formData: FormData) {
   const count = await fetchViewCount(entry.platform as Platform, entry.url);
   if (count === null) return;
 
-  await supabase
-    .from("campaign_entries")
-    .update({ views: count, views_updated_at: new Date().toISOString() })
-    .eq("id", entryId);
+  // Atomic snapshot + update + payout math, member-gated in SQL.
+  await supabase.rpc("record_entry_views", {
+    p_entry_id: entryId,
+    p_views: count,
+  });
 
   campaignsPaths(slug, campaignId).forEach((p) => revalidatePath(p));
 }
@@ -306,10 +307,10 @@ export async function refreshAllCampaignViewsAction(formData: FormData) {
   for (const entry of entries ?? []) {
     const count = await fetchViewCount(entry.platform as Platform, entry.url);
     if (count !== null) {
-      await supabase
-        .from("campaign_entries")
-        .update({ views: count, views_updated_at: new Date().toISOString() })
-        .eq("id", entry.id);
+      await supabase.rpc("record_entry_views", {
+        p_entry_id: entry.id,
+        p_views: count,
+      });
     }
   }
 

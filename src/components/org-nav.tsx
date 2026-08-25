@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -12,6 +13,8 @@ import {
   MessagesSquare,
   Megaphone,
   Sparkles,
+  Clapperboard,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { can } from "@/lib/permissions";
@@ -20,6 +23,7 @@ import { signOutAction } from "@/app/actions/auth";
 import { Avatar } from "@/components/ui/avatar";
 import { ThemeToggle } from "./theme-toggle";
 import { OrgSwitcher, type SwitcherOrg } from "./org-switcher";
+import { NewDmModal } from "@/app/o/[slug]/chat/dm-room";
 
 type NavItem = {
   href: string;
@@ -28,11 +32,24 @@ type NavItem = {
   permission?: PermissionKey;
 };
 
+export type RailDmThread = {
+  id: string;
+  other_name: string;
+  other_avatar: string | null;
+};
+
+type PickableMember = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+};
+
 const NAV: NavItem[] = [
   { href: "", label: "Overview", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/clipper", label: "AI Clipper", icon: Sparkles },
+  { href: "/studio", label: "Studio", icon: Clapperboard },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/members", label: "Members", icon: Users },
   { href: "/roles", label: "Roles", icon: ShieldCheck, permission: "access_admin_panel" },
@@ -43,14 +60,27 @@ const NAV: NavItem[] = [
 export function OrgNav({
   slug,
   permissions,
+  dmThreads,
+  organizationId,
+  members = [],
 }: {
   slug: string;
   permissions: Set<string>;
+  dmThreads?: RailDmThread[];
+  organizationId?: string;
+  members?: PickableMember[];
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const perms = permissions as Set<PermissionKey>;
+  const [newDmOpen, setNewDmOpen] = useState(false);
 
   const items = NAV.filter((n) => !n.permission || can(perms, n.permission));
+  const chatBase = `/o/${slug}/chat`;
+  const onChat = pathname.startsWith(chatBase);
+  const activeDm = searchParams.get("dm");
+  // The rail owns DMs; inside the Chat tab itself they'd duplicate it.
+  const showDms = dmThreads !== undefined;
 
   return (
     <nav className="flex gap-1 overflow-x-auto md:flex-col">
@@ -76,6 +106,56 @@ export function OrgNav({
           </Link>
         );
       })}
+
+      {showDms && (
+        <div className="mt-3 hidden min-w-0 shrink-0 flex-col gap-1 border-t border-line pt-3 md:flex">
+          <div className="flex items-center justify-between px-2">
+            <h2 className="font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Direct messages
+            </h2>
+            <button
+              type="button"
+              onClick={() => setNewDmOpen(true)}
+              title="New direct message"
+              aria-label="New direct message"
+              className="cursor-pointer rounded p-0.5 text-faint transition-colors hover:bg-raised hover:text-ink"
+            >
+              <MessageSquare size={14} />
+            </button>
+          </div>
+          {dmThreads.length === 0 ? (
+            <p className="hidden px-3 py-1 text-xs text-faint md:block">
+              None yet
+            </p>
+          ) : (
+            dmThreads.map((t) => (
+              <a
+                key={t.id}
+                href={`${chatBase}?dm=${t.id}`}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  onChat && activeDm === t.id
+                    ? "bg-raised font-medium text-accent"
+                    : "text-muted hover:bg-raised hover:text-ink",
+                )}
+              >
+                <Avatar name={t.other_name} url={t.other_avatar ?? undefined} size="sm" />
+                <span className="truncate">{t.other_name}</span>
+              </a>
+            ))
+          )}
+        </div>
+      )}
+
+      {showDms && organizationId && (
+        <NewDmModal
+          open={newDmOpen}
+          onClose={() => setNewDmOpen(false)}
+          slug={slug}
+          organizationId={organizationId}
+          members={members.filter((m) => m.user_id !== undefined)}
+        />
+      )}
     </nav>
   );
 }
