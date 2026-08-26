@@ -13,6 +13,7 @@ from pathlib import Path
 
 import config
 import captions as captions_mod
+import energy
 import ingest
 import reframe
 import score
@@ -57,33 +58,70 @@ def process_job(job: dict) -> None:
     work_dir = config.WORK_DIR / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1-2 · Download + audio
-    db.report_stage(job_id, "downloading", 5)
-    video = ingest.download(job["source_url"], job_id)
-    db.report_stage(job_id, "downloading", 12)
-    audio = ingest.extract_audio(video)
-    db.report_stage(job_id, "transcribing", 18)
+    # 1 · Audio-only download (small + fast) → wav
+    db.report_stage(job_id, "downloading", 4)
+    audio_media = ingest.download_audio(job["source_url"], job_id)
+    db.report_stage(job_id, "downloading", 10)
+    audio = ingest.extract_audio(audio_media)
 
-    # 3 · Transcribe
+    # 2 · Transcribe from audio alone
+    db.report_stage(job_id, "transcribing", 16)
     transcript = transcribe.transcribe(str(audio))
-    db.report_stage(job_id, "segmenting", 34)
 
-    # 4 · Candidate windows
+    # 3 · Candidate windows
+    db.report_stage(job_id, "segmenting", 32)
     windows = segment.build_windows(transcript["segments"])
     if not windows:
         raise RuntimeError("No speech found in the source video.")
-    db.report_stage(job_id, "scoring", 42)
 
-    # 5 · Cheap scoring of every window
+    # 4 · Cheap energy analysis over the WHOLE video (visual senses) —
+    #     worst-format download; keyframe-only decode keeps it fast.
+    total_duration = float(windows[-1]["end"])
+    analysis_video = None
+    db.report_stage(job_id, "analyzing", 38)
+    try:
+        analysis_video = ingest.download_analysis_video(job["source_url"], job_id)
+    except Exception as exc:
+        print(f"[main] analysis video unavailable: {exc}", flush=True)
+    energy.analyze(windows, audio, analysis_video, total_duration)
+
+    # 5 · Score every window (text + visual energy + optional centroids)
+    db.report_stage(job_id, "scoring", 46)
     ranked = score.score_windows(windows)
     finalists = ranked[: max(config.VL_TOP_N, 3)]
 
-    # 6 · Qwen2.5-VL watches the finalists
-    db.report_stage(job_id, "watching", 55)
-    if vl.available():
-        finalists = vl.refine(video, finalists, work_dir)
+    # 6 · Download ONLY the finalist sections as video (VL + cuts share them)
+    db.report_stage(job_id, "downloading", 52)
+    sections = [(float(w["start"]), float(w["end"])) for w in finalists]
+    section_files = ingest.download_sections(job["source_url"], job_id, sections)
 
-    # Keep the best three — that's what renders.
+    # Fallback: if sections failed wholesale, grab the full video once.
+    full_video: Path | None = None
+    if all(f is None for f in section_files):
+        print("[main] section downloads failed — falling back to full video", flush=True)
+        full_video = ingest.download_full_video(job["source_url"], job_id)
+
+    # 7 · Qwen2.5-VL watches the finalists
+    db.report_stage(job_id, "watching", 58)
+    if vl.available():
+        for i, w in enumerate(finalists):
+            f = section_files[i] or full_video
+            if f is None:
+                w["vl"] = None
+                continue
+            v_start = 0.0 if section_files[i] else float(w["start"])
+            v_end = (f and (v_start + float(w["end"]) - float(w["start"])))
+            finalists_frames_dir = work_dir / f"frames_{i}"
+            try:
+                frames = vl.sample_frames(Path(f), v_start, float(v_end), finalists_frames_dir)
+                verdict = vl._ask_vlm(frames, w["text"]) if frames else None
+            except Exception:
+                verdict = None
+            if verdict:
+                w["score01"] = round(min(w["score01"] * 0.60 + (verdict["score"] / 100) * 0.40, 1.0), 3)
+            w["vl"] = verdict
+        finalists.sort(key=lambda x: x["score01"], reverse=True)
+
     picks = finalists[:3]
     total_picks = len(picks)
 
@@ -93,7 +131,15 @@ def process_job(job: dict) -> None:
 
         style = (job.get("caption_style") or ["hormozi", "beast", "karaoke"][i % 3])
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
-        reframe.cut_and_reframe(video, float(w["start"]), float(w["end"]), raw_cut)
+
+        section = section_files[i] if i < len(section_files) else None
+        if section is not None:
+            # Section is already cut to the window; reframe across its length.
+            reframe.cut_and_reframe(Path(section), 0.0, float(w["end"]) - float(w["start"]), raw_cut)
+        else:
+            if full_video is None:
+                full_video = ingest.download_full_video(job["source_url"], job_id)
+            reframe.cut_and_reframe(full_video, float(w["start"]), float(w["end"]), raw_cut)
 
         title = titles.make_title(w)
         cues = captions_mod.build_cues(transcript["words"], float(w["start"]), float(w["end"]))

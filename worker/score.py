@@ -123,7 +123,7 @@ def heuristic_score(window: dict[str, Any]) -> tuple[float, dict[str, float]]:
     hook = min(hook_hits / 2 + (1 if window.get("opens_after_pause") else 0), 2) / 2
 
     power = min(sum(1 for w in POWER_WORDS if w in lower) / 4, 1.5) / 1.5
-    emotion = min(sum(1 for w in EMOTION_WORDS if w in lower) / 3, 1) 
+    emotion = min(sum(1 for w in EMOTION_WORDS if w in lower) / 3, 1)
 
     questions = min(lower.count("?") / 2, 1)
     exclamations = min(lower.count("!") / 3, 1)
@@ -135,20 +135,28 @@ def heuristic_score(window: dict[str, Any]) -> tuple[float, dict[str, float]]:
 
     avg_word_len = sum(len(w) for w in words) / n_words
     punchy = max(0.0, min(1.0, (7 - avg_word_len) / 4))
-    short_sentences = min(window.get("sentence_count", 5) / 8, 1)
 
     pacing = min(n_words / max(duration, 1) / 2.6, 1)  # ~2.6 wps ≈ energetic speech
 
+    # Visual/audio energy (motion, cut density, loudness, dynamics) — this is
+    # what surfaces visually-viral moments with bland transcripts.
+    visual = (
+        window.get("motion", 0) * 0.35
+        + window.get("cut_density", 0) * 0.30
+        + window.get("loudness", 0) * 0.20
+        + window.get("dynamics", 0) * 0.15
+    )
+
     parts = {
-        "hook": hook * 0.25,
-        "power": power * 0.20,
-        "emotion": emotion * 0.12,
-        "questions": questions * 0.10,
-        "length_fit": length_fit * 0.10,
-        "emphasis": emphasis * 0.08,
-        "punchy": punchy * 0.08,
-        "pacing": pacing * 0.07,
-        "short_sentences": short_sentences * 0.00,  # reported, unweighted v1
+        "hook": hook * 0.20,
+        "power": power * 0.16,
+        "emotion": emotion * 0.10,
+        "questions": questions * 0.08,
+        "length_fit": length_fit * 0.08,
+        "emphasis": emphasis * 0.06,
+        "punchy": punchy * 0.06,
+        "pacing": pacing * 0.06,
+        "visual": visual * 0.20,
     }
     base = sum(parts.values())
     return base, parts
