@@ -188,6 +188,7 @@ export type ClipJob = {
   stage: string;
   progress: number;
   caption_style: string | null;
+  clip_count: number;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -208,4 +209,38 @@ export type Clip = {
   reasoning: string | null;
   provider: "local" | "reka";
   created_at: string;
+};
+
+export type LinkedAccount = {
+  id: string;
+  user_id: string;
+  platform: "tiktok" | "youtube" | "instagram" | "other";
+  handle: string;
+  verification_code: string;
+  verified_at: string | null;
+  oauth_access_token: string | null;
+  oauth_refresh_token: string | null;
+  oauth_expires_at: string | null;
+  created_at: string;
+};
+
+export type ClipPost = {
+  id: string;
+  clip_id: string;
+  account_id: string;
+  job_id: string;
+  organization_id: string;
+  platform: "tiktok" | "youtube" | "instagram" | "other";
+  status: "queued" | "posting" | "posted" | "failed" | "cancelled";
+  caption: string | null;
+  hashtags: string[] | string | null;
+  platform_post_id: string | null;
+  platform_url: string | null;
+  error: string | null;
+  posted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined data
+  clip?: Clip;
+  account?: LinkedAccount;
 };

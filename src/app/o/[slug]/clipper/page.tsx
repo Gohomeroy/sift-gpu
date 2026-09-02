@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Chip } from "@/components/ui/chip";
 import { requireOrgContext } from "@/lib/org-context";
@@ -9,7 +10,7 @@ import { RealtimeRefresher } from "../jobs/realtime-refresher";
 import { deleteClipJobAction } from "@/app/actions/clipper";
 import { NewJobForm, ClipCard, JobProgress, EditHint } from "./clipper-parts";
 import { timeAgo } from "@/lib/utils";
-import type { Clip, ClipJob } from "@/lib/types";
+import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
 
 export const metadata: Metadata = { title: "AI Clipper" };
 
@@ -29,13 +30,19 @@ export default async function ClipperPage({
   const { org, member, permissions } = await requireOrgContext(slug);
   const supabase = await createClient();
 
-  const [{ data: jobs }, { data: clips }] = await Promise.all([
+  const [{ data: jobs }, { data: clips }, { data: accounts }, { data: posts }] = await Promise.all([
     supabase
       .from("clip_jobs")
       .select("*")
       .eq("organization_id", org.id)
       .order("created_at", { ascending: false }),
     supabase.from("clips").select("*").eq("organization_id", org.id),
+    supabase
+      .from("linked_accounts")
+      .select("*")
+      .eq("user_id", member.user_id)
+      .order("created_at", { ascending: false }),
+    supabase.from("clip_posts").select("*").eq("organization_id", org.id),
   ]);
 
   const jobRows = (jobs ?? []) as unknown as ClipJob[];
@@ -45,15 +52,22 @@ export default async function ClipperPage({
     list.push(c);
     clipsByJob.set(c.job_id, list);
   }
-
-  // Signed URLs for rendered clips (private bucket, org-gated).
-  const urlByClip = new Map<string, string>();
-  for (const c of (clips ?? []) as unknown as Clip[]) {
-    const { data } = await supabase.storage
-      .from("clips")
-      .createSignedUrl(c.storage_path, 3600);
-    if (data?.signedUrl) urlByClip.set(c.id, data.signedUrl);
+  // Sort clips by viral_score descending (highest virality first).
+  for (const list of clipsByJob.values()) {
+    list.sort((a, b) => (b.viral_score ?? -1) - (a.viral_score ?? -1));
   }
+
+  // Signed URLs for rendered clips (private bucket, org-gated) — parallelized.
+  const clipRows = (clips ?? []) as unknown as Clip[];
+  const urlEntries = await Promise.all(
+    clipRows.map(async (c) => {
+      const { data } = await supabase.storage
+        .from("clips")
+        .createSignedUrl(c.storage_path, 3600);
+      return [c.id, data?.signedUrl ?? null] as const;
+    }),
+  );
+  const urlByClip = new Map<string, string>(urlEntries.filter((e): e is [string, string] => e[1] !== null));
 
   const used = jobRows.length;
   const isFree = org.plan === "free";
@@ -104,6 +118,9 @@ export default async function ClipperPage({
                     <span className="font-mono text-[10px] text-faint">
                       {timeAgo(job.created_at)}
                     </span>
+                    <Chip tone="neutral">
+                      {job.clip_count ?? 3} clips
+                    </Chip>
                     <span className="ml-auto">
                       {job.created_by === member.user_id && (
                         <form action={deleteClipJobAction}>
@@ -144,6 +161,9 @@ export default async function ClipperPage({
                             key={clip.id}
                             clip={clip}
                             url={urlByClip.get(clip.id) ?? null}
+                            accounts={(accounts ?? []) as unknown as LinkedAccount[]}
+                            posts={(posts ?? []) as unknown as ClipPost[]}
+                            slug={slug}
                           />
                         ))}
                       </div>

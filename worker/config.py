@@ -22,4 +22,34 @@ WORK_DIR = Path(
 )
 
 POLL_INTERVAL_SECONDS = 5
-CLAIM_TIMEOUT_MINUTES = 90  # jobs stuck in processing longer than this are reclaimable
+CLAIM_TIMEOUT_MINUTES = 90
+
+# ── VL discovery sweep ────────────────────────────────────────────────────
+# When the VL server is available the worker first watches the WHOLE video
+# (sparse frame sampling) so visually-viral moments the transcript missed
+# still become candidates. The results merge with transcript-scored windows
+# before the focused watch pass.
+
+VL_DISCOVER_ENABLED = os.environ.get("VL_DISCOVER_ENABLED", "1") == "1"
+VL_DISCOVER_FRAMES = int(os.environ.get("VL_DISCOVER_FRAMES", "24"))
+VL_DISCOVER_BATCH = int(os.environ.get("VL_DISCOVER_BATCH", "12"))
+VL_DISCOVER_WIDTH = int(os.environ.get("VL_DISCOVER_WIDTH", "384"))
+VL_DISCOVER_MIN_DUR = float(os.environ.get("VL_DISCOVER_MIN_DUR", "15"))
+VL_DISCOVER_MAX_DUR = float(os.environ.get("VL_DISCOVER_MAX_DUR", "60"))
+
+# ── Social posting ────────────────────────────────────────────────────────
+
+POSTING_ENABLED = os.environ.get("POSTING_ENABLED", "1") == "1"
+POST_POLL_INTERVAL = int(os.environ.get("POST_POLL_INTERVAL", "10"))
+
+# TikTok
+TIKTOK_CLIENT_KEY = os.environ.get("TIKTOK_CLIENT_KEY", "")
+TIKTOK_CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET", "")
+
+# YouTube / Google
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+# Instagram / Facebook
+INSTAGRAM_CLIENT_ID = os.environ.get("INSTAGRAM_CLIENT_ID", "")
+INSTAGRAM_CLIENT_SECRET = os.environ.get("INSTAGRAM_CLIENT_SECRET", "")

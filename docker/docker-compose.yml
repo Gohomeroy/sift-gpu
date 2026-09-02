@@ -1,0 +1,42 @@
+# ── SIFT GPU Worker — Docker Compose ───────────────────────────────────
+# Usage: docker compose up -d
+# Requires: NVIDIA Container Toolkit (nvidia-docker2)
+# ────────────────────────────────────────────────────────────────────────
+
+services:
+  sift-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sift-gpu-worker
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "8080:8080"   # llama-server (VLM)
+      - "3001:3001"   # Remotion render server
+    env_file:
+      - .env.gpu
+    volumes:
+      # Persistent model storage — download once, reuse across restarts
+      - sift-models:/app/models
+      # Temporary work directory
+      - sift-tmp:/app/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Model loading takes time
+
+volumes:
+  sift-models:
+    driver: local
+  sift-tmp:
+    driver: local

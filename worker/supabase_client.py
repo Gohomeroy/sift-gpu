@@ -126,3 +126,80 @@ def signed_clip_url(storage_path: str, expires: int = 3600 * 24) -> str:
 
 def notify_stage_webhook(job_id: str, stage: str) -> None:  # pragma: no cover
     """Placeholder hook point (e.g. Discord ping on failure) — intentionally no-op."""
+
+
+# ── Social posting ──────────────────────────────────────────────────────
+
+
+def claim_next_post() -> dict[str, Any] | None:
+    """Claim the oldest queued post (queued -> posting)."""
+    sb = _client()
+
+    rows = (
+        sb.table("clip_posts")
+        .select("*, clip:clips(storage_path), account:linked_accounts(oauth_access_token, oauth_refresh_token, oauth_expires_at)")
+        .eq("status", "queued")
+        .order("created_at")
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+
+    post = rows[0]
+    updated = (
+        sb.table("clip_posts")
+        .update({"status": "posting", "updated_at": "now()"})
+        .eq("id", post["id"])
+        .neq("status", "posting")
+        .execute()
+    )
+    if not updated.data:
+        return None
+    return post
+
+
+def update_post_status(
+    post_id: str,
+    status: str,
+    platform_post_id: str | None = None,
+    platform_url: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Update a post's status in the database."""
+    sb = _client()
+    update_data: dict[str, Any] = {"status": status, "updated_at": "now()"}
+    if platform_post_id:
+        update_data["platform_post_id"] = platform_post_id
+    if platform_url:
+        update_data["platform_url"] = platform_url
+    if error:
+        update_data["error"] = error[:500]
+    if status == "posted":
+        update_data["posted_at"] = "now()"
+
+    sb.table("clip_posts").update(update_data).eq("id", post_id).execute()
+
+
+def update_account_token(account_id: str, access_token: str) -> None:
+    """Update an OAuth access token (after refresh)."""
+    sb = _client()
+    sb.table("linked_accounts").update(
+        {"oauth_access_token": access_token}
+    ).eq("id", account_id).execute()
+
+
+def download_clip_for_posting(storage_path: str, out_dir: Path) -> Path | None:
+    """Download a clip from Supabase storage to a local file."""
+    sb = _client()
+    try:
+        data = sb.storage.from_("clips").download(storage_path)
+        out_path = out_dir / Path(storage_path).name
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "wb") as f:
+            f.write(data)
+        return out_path
+    except Exception as exc:
+        print(f"[poster] download failed: {exc}", flush=True)
+        return None

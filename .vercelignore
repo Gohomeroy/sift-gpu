@@ -1,0 +1,10 @@
+worker/
+node_modules/
+.next/
+.vercel/
+.git/
+*.log
+*.pyc
+__pycache__/
+.env*
+*.tsbuildinfo

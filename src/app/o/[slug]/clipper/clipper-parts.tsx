@@ -8,7 +8,8 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Chip } from "@/components/ui/chip";
-import type { Clip, ClipJob } from "@/lib/types";
+import { PostButton } from "./post-button";
+import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
 
 export const CAPTION_STYLES = [
   { id: "hormozi", label: "HORMOZI", hint: "White caps · gold active word" },
@@ -83,6 +84,30 @@ export function NewJobForm({
             </div>
           </fieldset>
 
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Clips to generate
+            </legend>
+            <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
+              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                <label key={n} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="clip_count"
+                    value={n}
+                    defaultChecked={n === 3}
+                    className="peer sr-only"
+                  />
+                  <span className="block rounded-md border border-line px-2 py-1.5 text-center transition-colors peer-checked:border-accent peer-checked:bg-accent/10 peer-checked:text-accent hover:border-line-strong">
+                    <span className="block font-mono text-[10px] font-medium tracking-wide">
+                      {n}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           {state.error && <Alert kind="error">{state.error}</Alert>}
           <Button type="submit" loading={pending} className="justify-self-start">
             {!pending && <Sparkles size={14} />} Queue clipping job
@@ -97,6 +122,7 @@ const STAGES = [
   "downloading",
   "transcribing",
   "segmenting",
+  "analyzing",
   "scoring",
   "watching",
   "cutting",
@@ -144,7 +170,19 @@ function parseTags(tags: Clip["hashtags"]): string[] {
   }
 }
 
-export function ClipCard({ clip, url }: { clip: Clip; url: string | null }) {
+export function ClipCard({
+  clip,
+  url,
+  accounts,
+  posts,
+  slug,
+}: {
+  clip: Clip;
+  url: string | null;
+  accounts: LinkedAccount[];
+  posts: ClipPost[];
+  slug: string;
+}) {
   const tags = parseTags(clip.hashtags);
   const mmss = (v: number | null) =>
     v === null
@@ -216,15 +254,26 @@ export function ClipCard({ clip, url }: { clip: Clip; url: string | null }) {
           <p className="truncate font-mono text-[10px] text-faint">{tags.join(" ")}</p>
         )}
 
-        {url && (
-          <a
-            href={url}
-            download
-            className="mt-0.5 inline-flex items-center gap-1 font-mono text-[10px] text-faint hover:text-accent"
-          >
-            <Scissors size={11} /> download ↓
-          </a>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {url && (
+            <a
+              href={url}
+              download
+              className="inline-flex items-center gap-1 font-mono text-[10px] text-faint hover:text-accent"
+            >
+              <Scissors size={11} /> download ↓
+            </a>
+          )}
+          {url && (
+            <PostButton
+              clip={clip}
+              url={url}
+              accounts={accounts}
+              posts={posts}
+              slug={slug}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
