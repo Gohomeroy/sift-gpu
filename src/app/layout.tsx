@@ -15,7 +15,12 @@ export const metadata: Metadata = {
     template: "%s · SIFT",
   },
   description:
-    "Job board, timestamped video review and community for editing teams — one isolated workspace per agency.",
+    "AI-powered video clipping tool — turn long-form content into viral short-form clips.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+    other: { url: "/icon.png", type: "image/png" },
+  },
 };
 
 export default function RootLayout({
