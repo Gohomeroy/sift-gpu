@@ -16,6 +16,10 @@ WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VL_TOP_N = int(os.environ.get("VL_TOP_N", "8"))
 RENDER_SERVER_URL = os.environ.get("RENDER_SERVER_URL", "http://127.0.0.1:3001").rstrip("/")
 
+# ── Reframe engine ───────────────────────────────────────────────────────
+# "v1" = YuNet (original), "v2" = MediaPipe + YOLOv8 (smarter tracking)
+REFRAME_ENGINE = os.environ.get("REFRAME_ENGINE", "v2")
+
 WORK_DIR = Path(
     os.environ.get("WORK_DIR")
     or Path(__file__).resolve().parent / "tmp"
@@ -36,6 +40,11 @@ VL_DISCOVER_BATCH = int(os.environ.get("VL_DISCOVER_BATCH", "12"))
 VL_DISCOVER_WIDTH = int(os.environ.get("VL_DISCOVER_WIDTH", "384"))
 VL_DISCOVER_MIN_DUR = float(os.environ.get("VL_DISCOVER_MIN_DUR", "15"))
 VL_DISCOVER_MAX_DUR = float(os.environ.get("VL_DISCOVER_MAX_DUR", "60"))
+
+# ── Hook overlays ────────────────────────────────────────────────────────
+HOOK_STYLE = os.environ.get("HOOK_STYLE", "classic")
+HOOK_POSITION = os.environ.get("HOOK_POSITION", "top")
+HOOK_DURATION = float(os.environ.get("HOOK_DURATION", "4"))
 
 # ── Social posting ────────────────────────────────────────────────────────
 

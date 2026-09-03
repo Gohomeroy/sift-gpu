@@ -17,9 +17,12 @@ from pathlib import Path
 import config
 import captions as captions_mod
 import energy
+import hooks
 import ingest
 import poster
 import reframe
+import reframe_v2
+import scene_detection
 import score
 import segment
 import supabase_client as db
@@ -89,6 +92,29 @@ def process_job(job: dict) -> None:
     windows = segment.build_windows(transcript["segments"])
     if not windows:
         raise RuntimeError("No speech found in the source video.")
+
+    # 3b · Scene-aware windows from PySceneDetect (merges with transcript windows).
+    scenes: list[tuple[float, float]] = []
+    try:
+        # Need the full video for scene detection — use analysis video if available.
+        _scene_video = analysis_video or job["source_url"]
+        if analysis_video:
+            scenes = scene_detection.detect_scenes(analysis_video)
+            print(f"[main] detected {len(scenes)} scenes", flush=True)
+            scene_windows = scene_detection.build_scene_windows(
+                transcript["segments"], scenes
+            )
+            # Merge: keep unique windows (by start time) favoring scene windows
+            # when they align with transcript content.
+            seen_starts = {round(w["start"], 1) for w in windows}
+            for sw in scene_windows:
+                key = round(sw["start"], 1)
+                if key not in seen_starts:
+                    windows.append(sw)
+                    seen_starts.add(key)
+            windows.sort(key=lambda w: w["start"])
+    except Exception as exc:
+        print(f"[main] scene detection failed: {exc}", flush=True)
 
     # 4 · Cheap energy analysis over the WHOLE video (visual senses) —
     #     worst-format download; keyframe-only decode keeps it fast.
@@ -167,21 +193,32 @@ def process_job(job: dict) -> None:
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
         section = section_files[i] if i < len(section_files) else None
+        reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
         if section is not None:
-            reframe.cut_and_reframe(Path(section), 0.0, float(w["end"]) - float(w["start"]), raw_cut)
+            reframe_fn(Path(section), 0.0, float(w["end"]) - float(w["start"]), raw_cut)
         else:
             if full_video is None:
                 full_video = ingest.download_full_video(job["source_url"], job_id)
-            reframe.cut_and_reframe(full_video, float(w["start"]), float(w["end"]), raw_cut)
+            reframe_fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
 
         title = titles.make_title(w)
         cues = captions_mod.build_cues(transcript["words"], float(w["start"]), float(w["end"]))
 
         db.report_stage(job_id, "rendering", min(stage_pct + 4, 95))
         # Use the actual cut duration, not the window duration, to avoid dark padding.
-        actual_duration = reframe.get_video_duration(raw_cut)
+        duration_mod = reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe
+        actual_duration = duration_mod.get_video_duration(raw_cut)
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
-        final = render_captions(raw_cut, cues, title, style, duration)
+        captioned = render_captions(raw_cut, cues, title, style, duration)
+
+        # Hook text overlay — punchy headline burned onto the clip.
+        hook_path = work_dir / f"clip_{i}_hooked.mp4"
+        final = hooks.add_hook_to_video(
+            captioned, title, hook_path,
+            style=config.HOOK_STYLE,
+            position=config.HOOK_POSITION,
+            duration=min(config.HOOK_DURATION, duration),
+        )
 
         caption_text, tags = titles.make_caption_and_tags(w, w.get("vl"))
         reasoning = None
