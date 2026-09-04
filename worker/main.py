@@ -149,8 +149,13 @@ def process_job(job: dict) -> None:
         raise RuntimeError("No speech found in the source video.")
 
     # 3b · Scene-aware windows from PySceneDetect (merges with transcript windows).
-    #     Needs a local file — use the analysis_video downloaded earlier.
+    #     Needs a local file — download analysis_video first.
     scenes: list[tuple[float, float]] = []
+    analysis_video = None
+    try:
+        analysis_video = ingest.download_analysis_video(job["source_url"], job_id)
+    except Exception as exc:
+        print(f"[main] analysis video unavailable: {exc}", flush=True)
     try:
         if analysis_video:
             scenes = scene_detection.detect_scenes(analysis_video)
@@ -173,12 +178,7 @@ def process_job(job: dict) -> None:
     # 4 · Cheap energy analysis over the WHOLE video (visual senses) —
     #     worst-format download; keyframe-only decode keeps it fast.
     total_duration = float(windows[-1]["end"])
-    analysis_video = None
     db.report_stage(job_id, "analyzing", 38)
-    try:
-        analysis_video = ingest.download_analysis_video(job["source_url"], job_id)
-    except Exception as exc:
-        print(f"[main] analysis video unavailable: {exc}", flush=True)
     energy.analyze(windows, audio, analysis_video, total_duration)
 
     # 5 · Score every window (text + visual energy + optional centroids)
