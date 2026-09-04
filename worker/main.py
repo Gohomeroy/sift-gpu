@@ -149,12 +149,11 @@ def process_job(job: dict) -> None:
         raise RuntimeError("No speech found in the source video.")
 
     # 3b · Scene-aware windows from PySceneDetect (merges with transcript windows).
+    #     Needs a local file — use the analysis_video downloaded earlier.
     scenes: list[tuple[float, float]] = []
-    _scene_video: str | None = None
     try:
-        _scene_video = job["source_url"]
-        if _scene_video:
-            scenes = scene_detection.detect_scenes(_scene_video)
+        if analysis_video:
+            scenes = scene_detection.detect_scenes(analysis_video)
             print(f"[main] detected {len(scenes)} scenes", flush=True)
             scene_windows = scene_detection.build_scene_windows(
                 transcript["segments"], scenes
@@ -356,17 +355,20 @@ def posting_loop() -> None:
         return
 
     print(f"[poster] posting enabled, polling every {config.POST_POLL_INTERVAL}s")
+    warned = False
     while True:
         post = None
         try:
             post = db.claim_next_post()
+            warned = False  # reset once we get a clean query
         except Exception as exc:
-            if "clip_posts" not in str(exc) and not hasattr(posting_loop, "_warned"):
-                traceback.print_exc()
-                posting_loop._warned = True
-            elif not hasattr(posting_loop, "_warned"):
-                print("[poster] clip_posts table not found — social posting disabled until migration 0026 is applied")
-                posting_loop._warned = True
+            err_str = str(exc).lower()
+            if not warned:
+                if "clip_posts" in err_str or "pgrst205" in err_str:
+                    print("[poster] clip_posts table not found — social posting disabled until migration 0026 is applied")
+                else:
+                    traceback.print_exc()
+                warned = True
 
         if not post:
             time.sleep(config.POST_POLL_INTERVAL)
