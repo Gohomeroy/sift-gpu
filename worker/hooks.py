@@ -13,6 +13,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from reframe import _enc_args
+
 HOOK_STYLES = {
     "classic": {"bg": (255, 255, 255), "fg": (0, 0, 0), "outline": False},
     "dark": {"bg": (30, 30, 30), "fg": (255, 255, 255), "outline": False},
@@ -180,7 +182,7 @@ def add_hook_to_video(
             "-i", str(hook_png),
             "-filter_complex",
             f"[1:v]format=rgba[hook];[0:v][hook]overlay={x_pos}:{y_pos}:enable='{enable}'",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            *_enc_args(),
             "-c:a", "copy",
             str(out_path),
         ],

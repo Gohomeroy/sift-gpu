@@ -18,6 +18,30 @@ import numpy as np
 OUT_W, OUT_H = 1080, 1920
 CROP_W = int(OUT_H * 9 / 16)  # 1080
 
+_ENC = None
+
+
+def _encoder() -> str:
+    """Pick h264_nvenc (GPU) when available, else libx264 (CPU)."""
+    global _ENC
+    if _ENC is None:
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-encoders"],
+                capture_output=True, text=True, timeout=15,
+            )
+            _ENC = "h264_nvenc" if "h264_nvenc" in r.stdout else "libx264"
+        except Exception:
+            _ENC = "libx264"
+    return _ENC
+
+
+def _enc_args():
+    """ffmpeg video-codec args — hardware NVENC on GPU pods, libx264 fallback."""
+    if _encoder() == "h264_nvenc":
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "21"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
+
 # Smoothing parameters (from OpenShorts SmoothedCameraman)
 SAFE_ZONE_RATIO = 0.25  # camera only moves when subject leaves this zone
 JUMP_CONFIRM_FRAMES = 3  # big moves must repeat N times before following
@@ -157,7 +181,7 @@ def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray |
 
         h, w = frame.shape[:2]
         if cameraman is None:
-            cameraman = SmoothedCameraman(CROP_W, w)
+            cameraman = SmoothedCameraman(min(int(h * 9 / 16), w), w)
 
         faces = []
 
@@ -224,19 +248,9 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
     centers = track_crop_centers_v2(video, start, end)
 
     audio_args = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
-    vf_center = f"crop={CROP_W}:ih:x='(iw-{CROP_W})/2':y=0,scale={OUT_W}:{OUT_H}"
 
     if centers is None:
-        # Fallback: pad-to-fit (keeps full frame, adds blurred side bars).
-        pad_filter = (
-            f"split[main][bg];"
-            f"[bg]crop=min(iw*{OUT_H}/{OUT_W}\\,ih):min(ih*{OUT_W}/{OUT_W}\\,iw):0:0,"
-            f"scale={OUT_W}:{OUT_H},boxblur=20:20[blurred];"
-            f"[main]scale=min(iw*{OUT_H}/{OUT_W}\\,ih):min(ih*{OUT_W}/{OUT_W}\\,iw),"
-            f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2[padded];"
-            f"[blurred][padded]overlay=0:0"
-        )
-        # Simpler fallback: crop to 9:16 from source height, then scale (no stretch).
+        # Fallback: crop to 9:16 from source height, then scale (no stretch).
         simple_crop = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale={OUT_W}:{OUT_H}"
         subprocess.run(
             [
@@ -244,13 +258,20 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
                 "-ss", f"{start:.3f}", "-t", f"{duration:.3f}", "-i", str(video),
                 "-vf", simple_crop,
                 "-r", "30",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                *_enc_args(),
                 *audio_args,
                 str(out_path),
             ],
             capture_output=True, timeout=60 * 30, check=True,
         )
         return out_path
+
+    # Source crop width that preserves a 9:16 frame (no stretch).
+    probe = cv2.VideoCapture(str(video))
+    src_h = int(probe.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1920
+    src_w = int(probe.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1080
+    probe.release()
+    crop_w = min(int(src_h * 9 / 16), src_w)
 
     # Face-tracked pass
     seg_path = out_path.parent / (out_path.stem + "_seg.mp4")
@@ -260,8 +281,8 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
     # 1) Wide cut
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-         "-i", str(video), "-c:v", "libx264", "-preset", "veryfast",
-         "-crf", "18", str(seg_path)],
+         "-i", str(video), *_enc_args(),
+         str(seg_path)],
         capture_output=True, timeout=60 * 30, check=True,
     )
 
@@ -297,8 +318,8 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
         if not ok:
             break
         c = xs[min(i, len(xs) - 1)]
-        x0 = int(max(0, min(c - CROP_W / 2, frame.shape[1] - CROP_W)))
-        crop = frame[:, x0 : x0 + CROP_W]
+        x0 = int(max(0, min(c - crop_w / 2, frame.shape[1] - crop_w)))
+        crop = frame[:, x0 : x0 + crop_w]
         writer.write(cv2.resize(crop, (OUT_W, OUT_H), interpolation=cv2.INTER_LANCZOS4))
         i += 1
     cap.release()
@@ -312,7 +333,7 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
         ["ffmpeg", "-y",
          "-i", str(silent_path), "-i", str(audio_path),
          "-map", "0:v:0", "-map", "1:a:0",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+         *_enc_args(),
          *audio_args,
          str(out_path)],
         capture_output=True, text=True, timeout=60 * 30,

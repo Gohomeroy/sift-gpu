@@ -63,6 +63,7 @@ export async function renderClip(opts: {
     inputProps,
     trimBefore: 0,
     trimAfter: frames - 1,
+    x264Preset: "ultrafast",
   });
 
   return outputPath;

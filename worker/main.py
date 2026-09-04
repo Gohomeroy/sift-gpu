@@ -101,7 +101,7 @@ def _ffmpeg_captions(clip_path: Path, cues: list[dict], out_path: Path) -> None:
         [
             "ffmpeg", "-y", "-i", str(clip_path),
             "-vf", vf,
-            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            *reframe._enc_args(),
             "-c:a", "copy",
             str(out_path),
         ],
