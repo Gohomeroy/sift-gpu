@@ -187,8 +187,14 @@ def process_job(job: dict) -> None:
 
     # 6 · VL discovery sweep — watch the WHOLE video coarsely so visually-hot
     #     moments the transcript missed can still become clips.
+    #     Skip if transcript already found strong candidates (score > 0.70)
+    #     to save ~2-3 min of VL inference.
     discoveries: list[dict] = []
-    if vl.available() and analysis_video is not None:
+    top_score = ranked[0]["score01"] if ranked else 0
+    skip_discovery = top_score >= 0.70
+    if skip_discovery:
+        print(f"[main] skipping VL discovery — top transcript score {top_score:.2f} >= 0.70", flush=True)
+    elif vl.available() and analysis_video is not None:
         db.report_stage(job_id, "watching", 48)
         try:
             discoveries = vl.discover(Path(analysis_video), total_duration, work_dir)

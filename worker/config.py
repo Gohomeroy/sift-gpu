@@ -35,7 +35,7 @@ CLAIM_TIMEOUT_MINUTES = 90
 # before the focused watch pass.
 
 VL_DISCOVER_ENABLED = os.environ.get("VL_DISCOVER_ENABLED", "1") == "1"
-VL_DISCOVER_FRAMES = int(os.environ.get("VL_DISCOVER_FRAMES", "24"))
+VL_DISCOVER_FRAMES = int(os.environ.get("VL_DISCOVER_FRAMES", "12"))
 VL_DISCOVER_BATCH = int(os.environ.get("VL_DISCOVER_BATCH", "12"))
 VL_DISCOVER_WIDTH = int(os.environ.get("VL_DISCOVER_WIDTH", "384"))
 VL_DISCOVER_MIN_DUR = float(os.environ.get("VL_DISCOVER_MIN_DUR", "15"))
