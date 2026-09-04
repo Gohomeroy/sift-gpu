@@ -1,0 +1,10 @@
+.venv/
+worker/tmp/
+worker/models/
+worker/fonts/
+worker/.env
+*.log
+__pycache__/
+node_modules/
+.next/
+.DS_Store

@@ -1,0 +1,14 @@
+# SIFT clip worker — pipeline dependencies
+supabase>=2.4.0
+yt-dlp>=2024.8.6
+faster-whisper>=1.0.0
+opencv-python>=4.8.0
+numpy>=1.26
+sentence-transformers>=2.7.0
+requests>=2.31
+python-dotenv>=1.0
+# v2: OpenShorts stolen features
+Pillow>=10.0
+scenedetect>=0.6
+mediapipe>=0.10.14
+ultralytics>=8.0.0
