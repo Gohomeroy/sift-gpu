@@ -236,8 +236,8 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
             f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2[padded];"
             f"[blurred][padded]overlay=0:0"
         )
-        # Simpler fallback: center-crop but less aggressive (3:4 ratio instead of 9:16).
-        simple_crop = f"crop=min(iw*3/4\\,ih):min(ih*3/4\\,iw):0:0,scale={OUT_W}:{OUT_H}"
+        # Simpler fallback: crop to 9:16 from source height, then scale (no stretch).
+        simple_crop = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale={OUT_W}:{OUT_H}"
         subprocess.run(
             [
                 "ffmpeg", "-y",

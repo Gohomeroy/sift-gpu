@@ -139,8 +139,8 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
     vf_center = f"crop={CROP_W}:ih:x='(iw-{CROP_W})/2':y=0,scale={OUT_W}:{OUT_H}"
 
     if centers is None:
-        # Fallback: 3:4 crop (less aggressive than full 9:16 center-crop).
-        simple_crop = f"crop=min(iw*3/4\\,ih):min(ih*3/4\\,iw):0:0,scale={OUT_W}:{OUT_H}"
+        # Fallback: crop to 9:16 from source height, then scale (no stretch).
+        simple_crop = f"crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale={OUT_W}:{OUT_H}"
         subprocess.run(
             [
                 "ffmpeg", "-y",
