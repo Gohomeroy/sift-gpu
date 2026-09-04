@@ -360,8 +360,13 @@ def posting_loop() -> None:
         post = None
         try:
             post = db.claim_next_post()
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            if "clip_posts" not in str(exc) and not hasattr(posting_loop, "_warned"):
+                traceback.print_exc()
+                posting_loop._warned = True
+            elif not hasattr(posting_loop, "_warned"):
+                print("[poster] clip_posts table not found — social posting disabled until migration 0026 is applied")
+                posting_loop._warned = True
 
         if not post:
             time.sleep(config.POST_POLL_INTERVAL)

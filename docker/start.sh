@@ -47,7 +47,7 @@ if [ -f "$MODEL_PATH" ]; then
         --ctx-size "$LLAMA_CTX" \
         --threads "$LLAMA_THREADS" \
         --n-gpu-layers 99 \
-        --flash-attn \
+        --flash-attn on \
         --host 0.0.0.0 \
         > /tmp/llama-server.log 2>&1 &
 

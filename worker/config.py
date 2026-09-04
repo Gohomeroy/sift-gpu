@@ -14,7 +14,7 @@ LLAMA_SERVER_URL = os.environ.get("LLAMA_SERVER_URL", "").rstrip("/")
 VIRAL_CSV_PATH = os.environ.get("VIRAL_CSV_PATH", "")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VL_TOP_N = int(os.environ.get("VL_TOP_N", "8"))
-RENDER_SERVER_URL = os.environ.get("RENDER_SERVER_URL", "http://127.0.0.1:3001").rstrip("/")
+RENDER_SERVER_URL = os.environ.get("RENDER_SERVER_URL", "http://127.0.0.1:3002").rstrip("/")
 
 # ── Reframe engine ───────────────────────────────────────────────────────
 # "v1" = YuNet (original), "v2" = MediaPipe + YOLOv8 (smarter tracking)
