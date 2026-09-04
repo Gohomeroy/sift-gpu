@@ -35,6 +35,7 @@ WORKER_DIR="$REPO_DIR/worker"
 # Supabase (from your .env — update if keys change)
 SUPABASE_URL="https://lmgrfygmkdbejiyrbchp.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtZ3JmeWdta2RiZWppeXJiY2hwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzUxNTYxMiwiZXhwIjoyMTAzMDkxNjEyfQ.2R8vhiqlvbCz7DjiCPOF22LK02ULi74qR_L-gTpBKpA"
+HF_TOKEN="${HF_TOKEN:-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}"
 
 log() { echo -e "\033[1;32m[$(date +%H:%M:%S)] $*\033[0m"; }
 warn() { echo -e "\033[1;33m[$(date +%H:%M:%S)] WARNING: $*\033[0m"; }
@@ -63,6 +64,16 @@ else
         cmake \
         2>&1 | tail -3
     log "  ✓ System packages installed"
+fi
+
+# Node.js (needed for Remotion render server)
+if command -v node &>/dev/null; then
+    log "  Node.js already installed: $(node --version)"
+else
+    log "  Installing Node.js 22..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -1
+    apt-get install -y -qq nodejs 2>&1 | tail -2
+    log "  ✓ Node.js installed: $(node --version)"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -138,21 +149,17 @@ mkdir -p "$MODEL_DIR"
 if [ -f "$MODEL_Q4" ] && [ -f "$MODEL_MM" ]; then
     log "  Models already downloaded"
 else
-    pip install --quiet huggingface_hub[cli]
-    log "  Downloading Q4_K_M quantized model (~4.7GB)..."
-    huggingface-cli download \
-        QuantFactory/Qwen3-VL-8B-Instruct-GGUF \
-        Qwen3-VL-8B-Instruct-Q4_K_M.gguf \
-        --local-dir "$MODEL_DIR" \
-        --local-dir-use-symlinks False \
-        2>&1 | tail -3
-    log "  Downloading mmproj-F16 (~1.1GB)..."
-    huggingface-cli download \
-        QuantFactory/Qwen3-VL-8B-Instruct-GGUF \
-        mmproj-F16.gguf \
-        --local-dir "$MODEL_DIR" \
-        --local-dir-use-symlinks False \
-        2>&1 | tail -3
+    pip install --quiet huggingface_hub
+    log "  Downloading Q4_K_M (~4.7GB) + mmproj-F16 (~1.1GB)..."
+    python3 -c "
+from huggingface_hub import hf_hub_download
+import os
+d = '$MODEL_DIR'
+t = os.environ.get('HF_TOKEN', '')
+hf_hub_download('unsloth/Qwen3-VL-8B-Instruct-GGUF', 'Qwen3-VL-8B-Instruct-Q4_K_M.gguf', local_dir=d, token=t)
+hf_hub_download('unsloth/Qwen3-VL-8B-Instruct-GGUF', 'mmproj-F16.gguf', local_dir=d, token=t)
+print('  Done')
+"
     log "  ✓ Models downloaded"
 fi
 
@@ -200,6 +207,12 @@ log "  ✓ .env written"
 # STEP 8: Start services
 # ══════════════════════════════════════════════════════════════════════════
 log "═══ Step 8/9: Starting services ═══"
+
+# Install Remotion npm deps
+log "  Installing Remotion dependencies..."
+cd "$REPO_DIR/worker/remotion"
+npm install --quiet 2>&1 | tail -2
+cd "$REPO_DIR/worker"
 
 # Kill any existing services
 pkill -f llama-server 2>/dev/null || true
