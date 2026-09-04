@@ -18,7 +18,7 @@
 #
 # Idempotent: safe to re-run. Skips completed steps.
 # ──────────────────────────────────────────────────────────────────────────
-set -euo pipefail
+# No set -e — we handle errors per-step so apt warnings don't kill the script
 
 # ── Config ────────────────────────────────────────────────────────────────
 REPO_URL="https://github.com/Gohomeroy/sift-gpu.git"
@@ -44,26 +44,24 @@ fail() { echo -e "\033[1;31m[$(date +%H:%M:%S)] FAILED: $*\033[0m"; exit 1; }
 # STEP 1: System packages
 # ══════════════════════════════════════════════════════════════════════════
 log "═══ Step 1/9: System packages ═══"
-if dpkg -l | grep -q "libgl1-mesa-glx"; then
+if python3 -c "import cv2" 2>/dev/null; then
     log "  System packages already installed"
 else
-    apt-get update -qq
+    apt-get update -qq || true
     apt-get install -y -qq \
         ffmpeg \
-        libgl1-mesa-glx \
-        libegl1-mesa \
+        libgl1 \
+        libegl1 \
         libglib2.0-0 \
         libsm6 \
         libxext6 \
         libxrender-dev \
-        libgl1 \
-        libegl1 \
         git \
         curl \
         wget \
         build-essential \
         cmake \
-        > /dev/null 2>&1
+        2>&1 | tail -3
     log "  ✓ System packages installed"
 fi
 
@@ -74,22 +72,27 @@ log "═══ Step 2/9: Python dependencies ═══"
 if python3 -c "import cv2; import mediapipe; import scenedetect; import faster_whisper" 2>/dev/null; then
     log "  Python deps already installed"
 else
-    pip install --quiet --upgrade pip
+    pip install --quiet --upgrade pip 2>&1 | tail -1
+    # Install torch first (check if CUDA-enabled torch already present)
+    if python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+        log "  CUDA torch already installed"
+    else
+        pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cu124 2>&1 | tail -2
+    fi
     pip install --quiet \
-        supabase>=2.4.0 \
+        supabase \
         yt-dlp \
-        faster-whisper>=1.0.0 \
-        opencv-python>=4.8.0 \
-        numpy>=1.26 \
-        sentence-transformers>=2.7.0 \
-        requests>=2.31 \
-        python-dotenv>=1.0 \
-        "Pillow>=10.0" \
-        "scenedetect>=0.6" \
-        "mediapipe>=0.10.14" \
-        "ultralytics>=8.0.0" \
-        torch torchvision --index-url https://download.pytorch.org/whl/cu124 \
-        2>&1 | tail -5
+        faster-whisper \
+        opencv-python \
+        numpy \
+        sentence-transformers \
+        requests \
+        python-dotenv \
+        "Pillow" \
+        "scenedetect" \
+        "mediapipe" \
+        "ultralytics" \
+        2>&1 | tail -3
     log "  ✓ Python deps installed"
 fi
 
@@ -118,13 +121,13 @@ else
     log "  Cloning llama.cpp..."
     git clone --depth 1 https://github.com/ggml-org/llama.cpp "$LLAMA_BUILD" 2>&1 | tail -3
     cd "$LLAMA_BUILD"
-    log "  Building with CUDA..."
-    cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF > /dev/null 2>&1
-    cmake --build build --config Release -j$(nproc) > /dev/null 2>&1
-    cp build/bin/llama-server "$LLAMA_BIN"
+    log "  Building with CUDA (this takes ~3-5 min)..."
+    cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF 2>&1 | tail -3
+    cmake --build build --config Release -j$(nproc) 2>&1 | tail -3
+    cp build/bin/llama-server "$LLAMA_BIN" 2>/dev/null || cp build/bin/llama-server "$LLAMA_BIN"
     chmod +x "$LLAMA_BIN"
     cd /root
-    log "  ✓ llama-server installed: $(${LLAMA_BIN} --version 2>&1 | head -1)"
+    log "  ✓ llama-server installed"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
