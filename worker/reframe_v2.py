@@ -227,12 +227,22 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
     vf_center = f"crop={CROP_W}:ih:x='(iw-{CROP_W})/2':y=0,scale={OUT_W}:{OUT_H}"
 
     if centers is None:
-        # Fallback: center crop
+        # Fallback: pad-to-fit (keeps full frame, adds blurred side bars).
+        pad_filter = (
+            f"split[main][bg];"
+            f"[bg]crop=min(iw*{OUT_H}/{OUT_W}\\,ih):min(ih*{OUT_W}/{OUT_W}\\,iw):0:0,"
+            f"scale={OUT_W}:{OUT_H},boxblur=20:20[blurred];"
+            f"[main]scale=min(iw*{OUT_H}/{OUT_W}\\,ih):min(ih*{OUT_W}/{OUT_W}\\,iw),"
+            f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2[padded];"
+            f"[blurred][padded]overlay=0:0"
+        )
+        # Simpler fallback: center-crop but less aggressive (3:4 ratio instead of 9:16).
+        simple_crop = f"crop=min(iw*3/4\\,ih):min(ih*3/4\\,iw):0:0,scale={OUT_W}:{OUT_H}"
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-ss", f"{start:.3f}", "-t", f"{duration:.3f}", "-i", str(video),
-                "-vf", vf_center,
+                "-vf", simple_crop,
                 "-r", "30",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 *audio_args,

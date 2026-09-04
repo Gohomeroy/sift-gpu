@@ -34,9 +34,11 @@ import vl
 def render_captions(
     clip_path: Path, cues: list[dict], title: str, style: str, duration: float
 ) -> Path:
-    """Ask the Remotion render server to burn captions; falls back to raw cut."""
+    """Ask the Remotion render server to burn captions; falls back to ffmpeg drawtext, then raw cut."""
+    import json
     import requests
 
+    # Try Remotion server first.
     try:
         resp = requests.post(
             f"{config.RENDER_SERVER_URL}/render",
@@ -56,7 +58,55 @@ def render_captions(
             return out
     except Exception:
         pass
+
+    # Fallback: ffmpeg drawtext captions (simpler but functional).
+    if cues:
+        try:
+            captioned = clip_path.parent / (clip_path.stem + "_captioned.mp4")
+            _ffmpeg_captions(clip_path, cues, captioned)
+            if captioned.exists() and captioned.stat().st_size > 1000:
+                return captioned
+        except Exception:
+            pass
+
     return clip_path  # raw vertical cut is still a valid deliverable
+
+
+def _ffmpeg_captions(clip_path: Path, cues: list[dict], out_path: Path) -> None:
+    """Burn captions onto video using ffmpeg drawtext filter."""
+    import subprocess
+
+    # Build a drawtext filter chain — show each cue as white text with black outline.
+    filters = []
+    for cue in cues:
+        text = " ".join(w.get("text", "") for w in cue.get("words", []))
+        if not text:
+            continue
+        start = cue.get("start", 0)
+        end = cue.get("end", 0)
+        # Escape special characters for ffmpeg drawtext.
+        safe = text.replace("'", "'\\''").replace(":", "\\:")
+        filters.append(
+            f"drawtext=text='{safe}':fontsize=42:fontcolor=white:"
+            f"borderw=3:bordercolor=black:"
+            f"x=(w-text_w)/2:y=h-h/6:"
+            f"enable='between(t,{start:.2f},{end:.2f})'"
+        )
+
+    if not filters:
+        return
+
+    vf = ",".join(filters)
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(clip_path),
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            "-c:a", "copy",
+            str(out_path),
+        ],
+        capture_output=True, timeout=60 * 10, check=True,
+    )
 
 
 def process_job(job: dict) -> None:
@@ -64,6 +114,11 @@ def process_job(job: dict) -> None:
     org_id = job["organization_id"]
     clip_count = max(1, min(10, int(job.get("clip_count", 3))))
     work_dir = config.WORK_DIR / job_id
+
+    # Clean stale work directory from prior failed runs.
+    import shutil
+    if work_dir.exists():
+        shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # 1 · Audio-only download (small + fast) → wav
@@ -95,11 +150,11 @@ def process_job(job: dict) -> None:
 
     # 3b · Scene-aware windows from PySceneDetect (merges with transcript windows).
     scenes: list[tuple[float, float]] = []
+    _scene_video: str | None = None
     try:
-        # Need the full video for scene detection — use analysis video if available.
-        _scene_video = analysis_video or job["source_url"]
-        if analysis_video:
-            scenes = scene_detection.detect_scenes(analysis_video)
+        _scene_video = job["source_url"]
+        if _scene_video:
+            scenes = scene_detection.detect_scenes(_scene_video)
             print(f"[main] detected {len(scenes)} scenes", flush=True)
             scene_windows = scene_detection.build_scene_windows(
                 transcript["segments"], scenes

@@ -1,9 +1,8 @@
-"""Stage 2: word-level transcription with faster-whisper (CPU int8).
+"""Stage 2: word-level transcription with faster-whisper.
 
-Streams progress via callback (long videos otherwise look frozen at the
-transcribing stage) and enforces a stall watchdog — if no new segment
-arrives for STALL_TIMEOUT_SECONDS the transcription aborts instead of
-hanging forever.
+Auto-detects CUDA GPU and uses float16 for ~10x faster transcription.
+Falls back to CPU int8 when no GPU is available.
+Streams progress via callback and enforces a stall watchdog.
 """
 
 from __future__ import annotations
@@ -24,12 +23,25 @@ _model: WhisperModel | None = None
 def _get_model() -> WhisperModel:
     global _model
     if _model is None:
-        _model = WhisperModel(
-            config.WHISPER_MODEL,
-            device="cpu",
-            compute_type="int8",
-            cpu_threads=max(2, (os.cpu_count() or 4)),
-        )
+        try:
+            import torch
+            has_cuda = torch.cuda.is_available()
+        except ImportError:
+            has_cuda = False
+
+        if has_cuda:
+            _model = WhisperModel(
+                config.WHISPER_MODEL,
+                device="cuda",
+                compute_type="float16",
+            )
+        else:
+            _model = WhisperModel(
+                config.WHISPER_MODEL,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=max(2, (os.cpu_count() or 4)),
+            )
     return _model
 
 
@@ -49,7 +61,7 @@ def transcribe(
         audio_path,
         word_timestamps=True,
         vad_filter=True,
-        vad_parameters={"min_silence_duration_ms": 400},
+        vad_parameters={"min_silence_duration_ms": 1200},
         beam_size=1,  # greedy — ~2x faster than default beam, minor quality cost
     )
 

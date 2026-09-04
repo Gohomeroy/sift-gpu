@@ -139,11 +139,13 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
     vf_center = f"crop={CROP_W}:ih:x='(iw-{CROP_W})/2':y=0,scale={OUT_W}:{OUT_H}"
 
     if centers is None:
+        # Fallback: 3:4 crop (less aggressive than full 9:16 center-crop).
+        simple_crop = f"crop=min(iw*3/4\\,ih):min(ih*3/4\\,iw):0:0,scale={OUT_W}:{OUT_H}"
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-ss", f"{start:.3f}", "-t", f"{duration:.3f}", "-i", str(video),
-                "-vf", vf_center,
+                "-vf", simple_crop,
                 "-r", "30",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 *audio_args,

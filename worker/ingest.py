@@ -28,18 +28,27 @@ STRATEGIES: list[list[str]] = [
 
 
 def _run_ytdlp(args: list[str], what: str) -> Path | None:
+    out_dir = Path(args[args.index("-o") + 1]).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Snapshot existing files so we can detect truly new downloads.
+    existing = {f.name for f in out_dir.iterdir() if f.is_file()}
+
     for extra in STRATEGIES:
         proc = subprocess.run(
             ["yt-dlp", *args, *extra],
             capture_output=True, text=True, timeout=60 * 30,
         )
-        matches = list(Path(args[args.index("-o") + 1]).parent.glob("*"))
-        produced = [m for m in matches if m.is_file() and m.stat().st_size > 10_000]
+        # Only accept files that didn't exist before this attempt AND are >10KB.
+        produced = [
+            f for f in out_dir.iterdir()
+            if f.is_file() and f.name not in existing and f.stat().st_size > 10_000
+        ]
         if proc.returncode == 0 and produced:
             return produced[0]
         print(
- f"[ingest] {what} attempt failed ({' '.join(extra) or 'plain'}): "
- f"{proc.stderr[-160:]}", flush=True,
+            f"[ingest] {what} attempt failed ({' '.join(extra) or 'plain'}): "
+            f"{proc.stderr[-160:]}", flush=True,
         )
     return None
 
