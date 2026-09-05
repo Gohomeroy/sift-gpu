@@ -221,8 +221,14 @@ export const Captions: React.FC<{
   const now = frame / fps;
 
   const activeCueIndex = cues.findIndex((c) => now >= c.start && now < c.end);
-  const visible = cues.slice(0, Math.max(activeCueIndex + 1, 1));
-  const onScreen = visible.slice(-2); // current + previous line
+  // On silence there is no active cue — render NOTHING. The old
+  // Math.max(idx+1, 1) made it fall back to cues.slice(0, 1), so the FIRST
+  // caption ("why") reappeared in every gap. Now show the previous + current
+  // line only while a cue is actually on screen.
+  const onScreen =
+    activeCueIndex === -1
+      ? []
+      : cues.slice(Math.max(activeCueIndex - 1, 0), activeCueIndex + 1);
 
   return (
     <AbsoluteFill

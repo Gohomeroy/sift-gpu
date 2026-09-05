@@ -10,8 +10,10 @@ Run: python main.py  (from sift/worker/)
 
 from __future__ import annotations
 
+import os
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import config
@@ -255,9 +257,14 @@ def process_job(job: dict) -> None:
 
     # 13 · Cut each final pick straight from the local full video.
     #       (No per-section downloads — that's a second YouTube hit per clip.)
+    #       Clips are cut+rendered CONCURRENTLY (2 workers) — the GPU pod
+    #       has headroom, and serial JSON/Remotion renders were the long pole
+    #       (5 clips took ~8min of wall time in rendering alone).
     db.report_stage(job_id, "cutting", 60)
 
-    for i, w in enumerate(picks):
+    reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
+
+    def process_one(i: int, w: dict) -> None:
         stage_pct = 66 + int((i / max(total_picks, 1)) * 30)
         db.report_stage(job_id, "cutting", stage_pct)
 
@@ -267,7 +274,6 @@ def process_job(job: dict) -> None:
         theme = job.get("caption_theme") or "pop"
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
-        reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
         reframe_fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
 
         title = titles.make_title(w)
@@ -317,6 +323,13 @@ def process_job(job: dict) -> None:
                 "provider": "local",
             }
         )
+        print(f"[main] clip {i} done @ {round(duration, 1)}s", flush=True)
+
+    max_workers = max(1, int(os.environ.get("CLIP_PARALLELISM", "2")))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(process_one, i, w) for i, w in enumerate(picks)]
+        for fut in futures:
+            fut.result()  # re-raise the first failure so the job is marked failed
 
     db.complete_job(job_id)
 

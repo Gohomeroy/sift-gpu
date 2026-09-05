@@ -49,9 +49,12 @@ SCENE_CUT_SNAP_SPEED = 999  # instant snap on scene cut
 SLOW_PAN_SPEED = 10  # px/frame for slow pan
 FAST_PAN_SPEED = 24  # px/frame for >50% distance jumps
 
-# Detection strides
-MEDIAPIPE_STRIDE = 4  # detect every N frames
-YOLO_FALLBACK_STRIDE = 8  # YOLO every N frames when no face
+# Detection strides — frame_idx counts SAMPLE steps (≈2fps sampling), so a
+# stride of 1 = detect every sampled frame (~every 0.5s). Old values (4/8)
+# made actual detection every 2–4s, so the crop lagged and easily lost the
+# subject to a stray face/mic.
+MEDIAPIPE_STRIDE = 1
+YOLO_FALLBACK_STRIDE = 2
 
 
 class SmoothedCameraman:
@@ -114,7 +117,7 @@ def _detect_faces_mediapipe(frame):
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     with mp.solutions.face_detection.FaceDetection(
-        model_selection=0, min_detection_confidence=0.5
+        model_selection=0, min_detection_confidence=0.65
     ) as fd:
         results = fd.process(rgb)
 
@@ -147,15 +150,56 @@ def _detect_person_yolo(frame, model):
     return faces
 
 
-def _pick_active_speaker(faces, prev_center: float | None) -> tuple[int, int, int, int]:
-    """Pick the face most likely to be the active speaker (continuity)."""
-    if not faces:
+def _pick_active_speaker(faces, prev_center: float | None, frame_w: int) -> tuple[int, int, int, int]:
+    """Pick the face most likely to be the active speaker.
+
+    Rules (in order):
+    - Drop clear junk: empty, tiny (<4% of width), or super-wide boxes
+      (person/shoulder boxes, not faces) — these are how mics/interviewers
+      steal the frame.
+    - If we have a prior frame: stay on the nearest face to it (continuity),
+      unless a far-away face being present is MUCH bigger (speaker switched).
+    - Otherwise prefer large faces near the horizontal center of the shot.
+    """
+    def _area(f) -> int:
+        return f[2] * f[3]
+
+    valid = []
+    for x, y, bw, bh in faces:
+        if bw <= 0 or bh <= 0:
+            continue
+        if bw < 0.04 * frame_w:
+            continue
+        if bw / max(bh, 1) > 2.0:
+            continue
+        valid.append((x, y, bw, bh))
+
+    pool = valid or faces
+    if not pool:
         return (0, 0, 0, 0)
-    if len(faces) == 1:
-        return faces[0]
-    if prev_center is not None:
-        return min(faces, key=lambda f: abs((f[0] + f[2] / 2) - prev_center))
-    return max(faces, key=lambda f: f[2] * f[3])
+
+    if prev_center is not None and len(pool) > 1:
+        near = [
+            f for f in pool
+            if abs((f[0] + f[2] / 2) - prev_center) <= 0.45 * frame_w
+        ]
+        if near:
+            best = min(near, key=lambda f: abs((f[0] + f[2] / 2) - prev_center))
+            largest = max(pool, key=_area)
+            # A dramatically bigger face elsewhere usually means the
+            # speaker really did switch cutaways.
+            if _area(largest) > 2.5 * _area(best):
+                return largest
+            return best
+        return max(pool, key=_area)
+
+    # Fresh start — center bias breaks ties between similar-size faces.
+    def _score(f):
+        cx = f[0] + f[2] / 2
+        center_bias = max(0.0, 1 - abs(cx - frame_w / 2) / (frame_w / 2))
+        return _area(f) * (0.5 + 0.5 * center_bias)
+
+    return max(pool, key=_score)
 
 
 def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray | None:
@@ -203,7 +247,7 @@ def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray |
                 pass
 
         if faces:
-            x, y, fw, fh = _pick_active_speaker(faces, prev_center)
+            x, y, fw, fh = _pick_active_speaker(faces, prev_center, w)
             cx = float(x + fw / 2)
             cameraman.update(cx)
             centers.append(cameraman.current_x)
