@@ -70,6 +70,12 @@ else
         build-essential \
         cmake \
         2>&1 | tail -3
+    # Remotion's headless chrome needs browser system libs.
+    apt-get install -y -qq \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+        libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 \
+        libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 \
+        libpango-1.0-0 libcairo2 2>&1 | tail -2
     log "  ✓ System packages installed"
 fi
 
