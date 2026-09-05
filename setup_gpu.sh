@@ -191,8 +191,13 @@ if [ ! -d "$REPO_DIR/.git" ]; then
 fi
 git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
 git fetch origin master 2>&1 | tail -2
-git checkout -B master origin/master 2>&1 | tail -3
+git checkout -B master origin/master -f 2>&1 | tail -3
+git reset --hard origin/master 2>&1 | tail -2
+git clean -fdx -e models -e .cache 2>&1 | tail -3
 git pull origin master 2>&1 | tail -2
+if [ ! -f "$REPO_DIR/worker/main.py" ]; then
+    fail "repo files missing after sync (Step 6)"
+fi
 log "  ✓ Repo synced to master"
 
 # ══════════════════════════════════════════════════════════════════════════
