@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { DangerButton } from "@/components/ui/danger-button";
 import { RealtimeRefresher } from "../jobs/realtime-refresher";
 import { deleteClipJobAction } from "@/app/actions/clipper";
+import { TRAXN_OWNER_UID } from "@/lib/traxn-owner";
 import { NewJobForm, ClipCard, JobProgress, EditHint } from "./clipper-parts";
 import { timeAgo } from "@/lib/utils";
 import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
@@ -71,6 +72,7 @@ export default async function ClipperPage({
 
   const used = jobRows.length;
   const isFree = org.plan === "free";
+  const isUnlimited = member.user_id === TRAXN_OWNER_UID;
 
   return (
     <div className="mx-auto grid max-w-4xl gap-6">
@@ -87,12 +89,20 @@ export default async function ClipperPage({
             clipping and renders them with viral captions.
           </p>
         </div>
-        <Chip tone={isFree ? "neutral" : "accent"}>
-          {isFree ? `FREE · ${used}/3 VIDEOS` : org.plan.toUpperCase()}
+        <Chip tone={isUnlimited || !isFree ? "accent" : "neutral"}>
+          {isUnlimited
+            ? "UNLIMITED"
+            : isFree
+              ? `FREE · ${used}/3 VIDEOS`
+              : org.plan.toUpperCase()}
         </Chip>
       </header>
 
-      <NewJobForm slug={slug} organizationId={org.id} disabled={isFree && used >= 3} />
+      <NewJobForm
+        slug={slug}
+        organizationId={org.id}
+        disabled={isFree && used >= 3 && !isUnlimited}
+      />
 
       <section className="grid gap-3">
         <h2 className="font-mono text-[11px] tracking-[0.08em] text-muted uppercase">
@@ -122,7 +132,8 @@ export default async function ClipperPage({
                       {job.clip_count ?? 3} clips
                     </Chip>
                     <span className="ml-auto">
-                      {job.created_by === member.user_id && (
+                      {(job.created_by === member.user_id ||
+                        org.owner_id === member.user_id) && (
                         <form action={deleteClipJobAction}>
                           <input type="hidden" name="job_id" value={job.id} />
                           <input type="hidden" name="slug" value={slug} />

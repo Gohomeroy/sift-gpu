@@ -41,7 +41,7 @@ export async function deleteClipJobAction(formData: FormData) {
   const jobId = String(formData.get("job_id") ?? "");
   const slug = String(formData.get("slug") ?? "");
 
-  await supabase.from("clip_jobs").delete().eq("id", jobId);
+  await supabase.rpc("delete_clip_job", { p_job: jobId });
 
   revalidatePath(`/o/${slug}/clipper`);
 }
