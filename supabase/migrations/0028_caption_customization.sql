@@ -16,6 +16,11 @@ begin;
 
 -- 1) clip_jobs: new columns (drop old caption_style check, add new style set)
 alter table public.clip_jobs drop constraint if exists clip_jobs_caption_style_check;
+
+-- Map legacy styles to the new set before enforcing the new constraint.
+update public.clip_jobs set caption_style = 'pop' where caption_style = 'hormozi';
+update public.clip_jobs set caption_style = 'pop' where caption_style = 'beast';
+
 alter table public.clip_jobs
   add column if not exists caption_font text not null default 'anton',
   add column if not exists caption_sub text not null default 'zoom',
@@ -35,6 +40,10 @@ alter table public.clip_jobs
 
 -- 2) clips: same columns so the gallery can show what each clip used
 alter table public.clips drop constraint if exists clips_caption_style_check;
+
+-- Map legacy styles to the new set before enforcing the new constraint.
+update public.clips set caption_style = 'pop' where caption_style in ('hormozi', 'beast');
+
 alter table public.clips
   add column if not exists caption_font text,
   add column if not exists caption_sub text,
