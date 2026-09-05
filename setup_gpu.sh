@@ -23,11 +23,11 @@
 # ── Config ────────────────────────────────────────────────────────────────
 export DEBIAN_FRONTEND=noninteractive
 REPO_URL="https://github.com/Gohomeroy/sift-gpu.git"
-REPO_DIR="/root/sift"
-MODEL_DIR="/root/sift/models"
+REPO_DIR="${REPO_DIR:-/root/sift}"
+MODEL_DIR="$REPO_DIR/models"
 MODEL_Q4="$MODEL_DIR/Qwen3-VL-8B-Instruct-Q4_K_M.gguf"
 MODEL_MM="$MODEL_DIR/mmproj-F16.gguf"
-LLAMA_BUILD="/root/llama-build"
+LLAMA_BUILD="${LLAMA_BUILD:-/root/llama-build}"
 LLAMA_BIN="/usr/local/bin/llama-server"
 LLAMA_PORT=8080
 RENDER_PORT=3002
