@@ -20,6 +20,12 @@ RENDER_SERVER_URL = os.environ.get("RENDER_SERVER_URL", "http://127.0.0.1:3002")
 # becomes the first download strategy, ahead of the player-client tricks.
 YTDLP_COOKIES_FILE = os.environ.get("YTDLP_COOKIES_FILE", "")
 
+# HTTP(S)/SOCKS proxy for yt-dlp. YouTube blocks datacenter IPs at the
+# playability gate before any PO token is checked; routing through a
+# proxy (e.g. Cloudflare WARP SOCKS5 on 127.0.0.1:40000) makes the
+# request egress from a non-flagged IP.
+YTDLP_PROXY = os.environ.get("YTDLP_PROXY", "")
+
 # ── Reframe engine ───────────────────────────────────────────────────────
 # "v1" = YuNet (original), "v2" = MediaPipe + YOLOv8 (smarter tracking)
 REFRAME_ENGINE = os.environ.get("REFRAME_ENGINE", "v2")

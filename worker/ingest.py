@@ -18,21 +18,28 @@ import config
 # A cookie file (Netscape format) beats all of them.
 # Node + EJS fetch solve YouTube's JS challenge when yt-dlp runs from PyPI
 # (pip package has no bundled scripts; node is a hard dep for Remotion anyway).
+# Also route through a proxy when configured: YouTube flags datacenter IPs at
+# the playability gate (before tokens are checked), so egressing through
+# Cloudflare WARP (or any non-flagged IP) is what actually unblocks downloads.
 EJS_ARGS = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
 # Throttle requests + retry to ride out YouTube's transient IP tag-of-war.
 RELAX_ARGS = ["--sleep-requests", "1.0", "--retries", "4", "--retry-sleep", "15"]
+# Prefer h264 > vp9 > av01. AV1 mp4 gets picked by `ext=mp4` format filters and
+# OpenCV/PySceneDetect can't decode it on this container (no hw AV1).
+FORMAT_ARGS = ["--format-sort", "vcodec:h264"]
+PROXY_ARGS = ["--proxy", config.YTDLP_PROXY] if config.YTDLP_PROXY else []
 STRATEGIES: list[list[str]] = []
 if config.YTDLP_COOKIES_FILE:
-    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE), *EJS_ARGS, *RELAX_ARGS])
+    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE), *PROXY_ARGS, *EJS_ARGS, *RELAX_ARGS, *FORMAT_ARGS])
 STRATEGIES += [
-    ["--extractor-args", "youtube:player_client=android,web_safari", *EJS_ARGS, *RELAX_ARGS],
+    ["--extractor-args", "youtube:player_client=android,web_safari", *PROXY_ARGS, *EJS_ARGS, *RELAX_ARGS, *FORMAT_ARGS],
     *(
-        [["--cookies-from-browser", b, *EJS_ARGS, *RELAX_ARGS] for b in [
+        [["--cookies-from-browser", b, *PROXY_ARGS, *EJS_ARGS, *RELAX_ARGS, *FORMAT_ARGS] for b in [
             os.environ.get("YTDLP_COOKIES_FROM", ""),
             "chrome", "edge", "brave", "firefox",
         ] if b]
     ),
-    [*EJS_ARGS, *RELAX_ARGS],
+    [*PROXY_ARGS, *EJS_ARGS, *RELAX_ARGS, *FORMAT_ARGS],
 ]
 
 
