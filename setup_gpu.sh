@@ -128,6 +128,17 @@ log "═══ Step 4/9: llama.cpp (CUDA) ═══"
 if [ -f "$LLAMA_BIN" ]; then
     log "  llama-server already installed at $LLAMA_BIN"
 else
+    # Resolve nvcc: RunPod torch images keep it at /usr/local/cuda-12.8/bin (not on PATH)
+    NVC=$(command -v nvcc || true)
+    if [ -z "$NVC" ] && [ -x "/usr/local/cuda-12.8/bin/nvcc" ]; then NVC=/usr/local/cuda-12.8/bin/nvcc; fi
+    if [ -z "$NVC" ] && [ -x "/usr/local/cuda/bin/nvcc" ]; then NVC=/usr/local/cuda/bin/nvcc; fi
+    if [ -z "$NVC" ]; then
+        log "  nvcc not found, installing nvidia-cuda-toolkit..."
+        apt-get install -y -qq nvidia-cuda-toolkit 2>&1 | tail -2
+        NVC=$(command -v nvcc)
+    fi
+    log "  Using nvcc: $NVC"
+    export CUDACXX="$NVC"
     if [ -d "$LLAMA_BUILD" ]; then
         rm -rf "$LLAMA_BUILD"
     fi
@@ -135,12 +146,16 @@ else
     git clone --depth 1 https://github.com/ggml-org/llama.cpp "$LLAMA_BUILD" 2>&1 | tail -3
     cd "$LLAMA_BUILD"
     log "  Building with CUDA (this takes ~3-5 min)..."
-    cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF 2>&1 | tail -3
-    cmake --build build --config Release -j$(nproc) 2>&1 | tail -3
-    cp build/bin/llama-server "$LLAMA_BIN" 2>/dev/null || cp build/bin/llama-server "$LLAMA_BIN"
-    chmod +x "$LLAMA_BIN"
+    cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF -DCMAKE_CUDA_ARCHITECTURES=86 > /tmp/llama-cmake.log 2>&1 || { tail -20 /tmp/llama-cmake.log; fail "cmake configure failed"; }
+    cmake --build build --config Release -j$(nproc) > /tmp/llama-build.log 2>&1 || { tail -20 /tmp/llama-build.log; fail "llama.cpp build failed"; }
+    if [ -f build/bin/llama-server ]; then
+        cp build/bin/llama-server "$LLAMA_BIN"
+        chmod +x "$LLAMA_BIN"
+        log "  ✓ llama-server installed"
+    else
+        fail "llama-server binary not produced"
+    fi
     cd /root
-    log "  ✓ llama-server installed"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -169,19 +184,16 @@ fi
 # STEP 6: Clone / update sift repo
 # ══════════════════════════════════════════════════════════════════════════
 log "═══ Step 6/9: Sift repo ═══"
-if [ -d "$REPO_DIR/.git" ]; then
-    cd "$REPO_DIR"
-    git fetch origin master 2>&1 | tail -2
-    git checkout -B master origin/master 2>&1 | tail -2
-    git pull origin master 2>&1 | tail -3
-    log "  ✓ Repo synced to master"
-else
-    git clone "$REPO_URL" "$REPO_DIR" 2>&1 | tail -3
-    cd "$REPO_DIR"
-    git fetch origin master 2>&1 | tail -2
-    git checkout -B master origin/master 2>&1 | tail -2
-    log "  ✓ Repo cloned (master branch)"
+mkdir -p "$REPO_DIR"
+cd "$REPO_DIR" || { fail "cannot enter $REPO_DIR"; }
+if [ ! -d "$REPO_DIR/.git" ]; then
+    git init -q -b master
 fi
+git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
+git fetch origin master 2>&1 | tail -2
+git checkout -B master origin/master 2>&1 | tail -3
+git pull origin master 2>&1 | tail -2
+log "  ✓ Repo synced to master"
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 7: Write worker/.env
