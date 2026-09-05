@@ -243,6 +243,23 @@ def process_job(job: dict) -> None:
         if not any(_overlap(w, d) > 0.50 for d in deduped):
             deduped.append(w)
     picks = deduped[:clip_count]
+
+    # 10b · Hook rule — every clip must open on a hook in the first 1-3s.
+    #        Arc windows already start at the hook; this snaps any leftover
+    #        candidate (VL discovery, scene windows) to a hook sentence start.
+    for w in picks:
+        try:
+            snapped = segment.snap_start_to_hook(w, transcript["segments"])
+            if snapped is not None and abs(snapped - float(w["start"])) > 0.01:
+                w["start"] = snapped
+                w["text"] = " ".join(
+                    seg["text"]
+                    for seg in transcript["segments"]
+                    if float(seg["start"]) >= snapped
+                    and float(seg["end"]) <= float(w["end"])
+                ).strip()
+        except Exception as exc:
+            print(f"[main] hook snap skipped for {w.get('start')}: {exc}", flush=True)
     total_picks = len(picks)
 
     for i, w in enumerate(picks):

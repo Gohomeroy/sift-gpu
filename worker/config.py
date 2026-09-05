@@ -39,7 +39,7 @@ VL_DISCOVER_FRAMES = int(os.environ.get("VL_DISCOVER_FRAMES", "12"))
 VL_DISCOVER_BATCH = int(os.environ.get("VL_DISCOVER_BATCH", "12"))
 VL_DISCOVER_WIDTH = int(os.environ.get("VL_DISCOVER_WIDTH", "384"))
 VL_DISCOVER_MIN_DUR = float(os.environ.get("VL_DISCOVER_MIN_DUR", "15"))
-VL_DISCOVER_MAX_DUR = float(os.environ.get("VL_DISCOVER_MAX_DUR", "60"))
+VL_DISCOVER_MAX_DUR = float(os.environ.get("VL_DISCOVER_MAX_DUR", "90"))
 
 # ── Hook overlays ────────────────────────────────────────────────────────
 HOOKS_ENABLED = os.environ.get("HOOKS_ENABLED", "0") == "1"

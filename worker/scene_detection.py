@@ -26,8 +26,8 @@ def detect_scenes(video_path: str) -> list[tuple[float, float]]:
 def build_scene_windows(
     transcript_segments: list[dict[str, Any]],
     scenes: list[tuple[float, float]],
-    min_dur: float = 18.0,
-    max_dur: float = 62.0,
+    min_dur: float = 10.0,
+    max_dur: float = 90.0,
 ) -> list[dict[str, Any]]:
     """Build candidate windows anchored to scene boundaries.
 
