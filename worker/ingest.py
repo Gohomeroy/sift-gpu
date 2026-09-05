@@ -15,7 +15,11 @@ import config
 
 # YouTube bot-walls anonymous web-client downloads; android+safari player
 # clients dodge it without cookies. Browser cookies remain as fallback.
-STRATEGIES: list[list[str]] = [
+# A cookie file (Netscape format) beats all of them.
+STRATEGIES: list[list[str]] = []
+if config.YTDLP_COOKIES_FILE:
+    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE)])
+STRATEGIES += [
     ["--extractor-args", "youtube:player_client=android,web_safari"],
     *(
         [["--cookies-from-browser", b] for b in [

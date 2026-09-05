@@ -16,6 +16,10 @@ WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VL_TOP_N = int(os.environ.get("VL_TOP_N", "8"))
 RENDER_SERVER_URL = os.environ.get("RENDER_SERVER_URL", "http://127.0.0.1:3002").rstrip("/")
 
+# Optional Netscape-format cookie file (YouTube bot-wall bypass). When set it
+# becomes the first download strategy, ahead of the player-client tricks.
+YTDLP_COOKIES_FILE = os.environ.get("YTDLP_COOKIES_FILE", "")
+
 # ── Reframe engine ───────────────────────────────────────────────────────
 # "v1" = YuNet (original), "v2" = MediaPipe + YOLOv8 (smarter tracking)
 REFRAME_ENGINE = os.environ.get("REFRAME_ENGINE", "v2")
