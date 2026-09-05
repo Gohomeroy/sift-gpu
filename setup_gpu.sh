@@ -32,6 +32,7 @@ LLAMA_BUILD="${LLAMA_BUILD:-/root/llama-build}"
 LLAMA_BIN="/usr/local/bin/llama-server"
 LLAMA_PORT=8080
 RENDER_PORT=3002
+WORK_DIR="$REPO_DIR/tmp"
 WORKER_DIR="$REPO_DIR/worker"
 
 # Supabase (from your .env — update if keys change)
