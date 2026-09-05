@@ -12,7 +12,10 @@ export async function createClipJobAction(
   const slug = String(formData.get("slug") ?? "");
   const sourceUrl = String(formData.get("source_url") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
-  const captionStyle = String(formData.get("caption_style") ?? "hormozi");
+  const captionStyle = String(formData.get("caption_style") ?? "pop");
+  const captionFont = String(formData.get("caption_font") ?? "anton");
+  const captionSub = String(formData.get("caption_sub") ?? "zoom");
+  const captionTheme = String(formData.get("caption_theme") ?? "pop");
   const clipCount = Math.max(1, Math.min(10, Number(formData.get("clip_count")) || 3));
 
   if (!sourceUrl.startsWith("http")) {
@@ -27,6 +30,9 @@ export async function createClipJobAction(
     p_source_url: sourceUrl,
     p_title: title,
     p_caption_style: captionStyle,
+    p_caption_font: captionFont,
+    p_caption_sub: captionSub,
+    p_caption_theme: captionTheme,
     p_clip_count: clipCount,
   });
 

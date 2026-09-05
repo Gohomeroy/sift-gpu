@@ -12,12 +12,74 @@ import { PostButton } from "./post-button";
 import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
 
 export const CAPTION_STYLES = [
-  { id: "hormozi", label: "HORMOZI", hint: "White caps · gold active word" },
-  { id: "beast", label: "BEAST", hint: "Lime box on the spoken word" },
-  { id: "karaoke", label: "KARAOKE", hint: "Sweep to full white" },
+  { id: "karaoke", label: "KARAOKE", hint: "Active word sweeps yellow" },
+  { id: "pill", label: "PILL", hint: "Rounded pills · active turns yellow" },
   { id: "boxed", label: "BOXED", hint: "Black chips · active burns yellow" },
-  { id: "minimal", label: "MINIMAL", hint: "Clean sentence case" },
+  { id: "minimal", label: "MINIMAL", hint: "Thin quiet uppercase" },
+  { id: "two_tone", label: "TWO TONE", hint: "Heavy black outline · yellow pop" },
+  { id: "pop", label: "POP", hint: "CapCut classic · bold white caps" },
 ] as const;
+
+export const CAPTION_FONTS = [
+  { id: "impact", label: "IMPACT", hint: "Condensed black · classic" },
+  { id: "anton", label: "ANTON", hint: "Tall condensed · bold" },
+  { id: "outfit", label: "OUTFIT", hint: "Modern geometric sans" },
+  { id: "poppins", label: "POPPINS", hint: "Rounded geometric" },
+  { id: "montserrat", label: "MONTSERRAT", hint: "Neutral grotesque" },
+  { id: "rajdhani", label: "RAJDHANI", hint: "Techy squared sans" },
+] as const;
+
+export const CAPTION_SUBS = [
+  { id: "plain", label: "PLAIN", hint: "No animation" },
+  { id: "bounce", label: "BOUNCE", hint: "Active word bounces" },
+  { id: "fade", label: "FADE", hint: "Smooth fade in" },
+  { id: "zoom", label: "ZOOM", hint: "Active word scales up" },
+  { id: "wave", label: "WAVE", hint: "Rises and falls" },
+  { id: "rotate", label: "ROTATE", hint: "Active word tilts" },
+] as const;
+
+export const CAPTION_THEMES = [
+  { id: "pop", label: "POP", hint: "White caps · gold accent" },
+  { id: "karaoke", label: "KARAOKE", hint: "Dimmed white · gold active" },
+  { id: "hustle", label: "HUSTLE", hint: "White · amber accent" },
+  { id: "grape", label: "GRAPE", hint: "Purple panel · lavender accent" },
+  { id: "beast", label: "BEAST", hint: "White · lime accent" },
+  { id: "poppin", label: "POPPIN", hint: "White · pink accent" },
+] as const;
+
+function SelectorGrid({
+  name,
+  options,
+  defaultChecked = options[0]?.id,
+}: {
+  name: string;
+  options: readonly { id: string; label: string; hint: string }[];
+  defaultChecked?: string;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+      {options.map((s) => (
+        <label key={s.id} className="cursor-pointer">
+          <input
+            type="radio"
+            name={name}
+            value={s.id}
+            defaultChecked={s.id === defaultChecked}
+            className="peer sr-only"
+          />
+          <span className="block rounded-md border border-line px-2 py-1.5 text-center transition-colors peer-checked:border-accent peer-checked:bg-accent/10 peer-checked:text-accent hover:border-line-strong">
+            <span className="block font-mono text-[9px] font-medium tracking-wide">
+              {s.label}
+            </span>
+            <span className="mt-0.5 block text-[8px] leading-tight text-faint">
+              {s.hint}
+            </span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
 
 export function NewJobForm({
   slug,
@@ -61,27 +123,44 @@ export function NewJobForm({
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Caption style
             </legend>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
-              {CAPTION_STYLES.map((s, i) => (
-                <label key={s.id} className="cursor-pointer">
-                  <input
-                    type="radio"
-                    name="caption_style"
-                    value={s.id}
-                    defaultChecked={i === 0}
-                    className="peer sr-only"
-                  />
-                  <span className="block rounded-md border border-line px-2 py-1.5 text-center transition-colors peer-checked:border-accent peer-checked:bg-accent/10 peer-checked:text-accent hover:border-line-strong">
-                    <span className="block font-mono text-[10px] font-medium tracking-wide">
-                      {s.label}
-                    </span>
-                    <span className="mt-0.5 block text-[9px] leading-tight text-faint">
-                      {s.hint}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
+            <SelectorGrid
+              name="caption_style"
+              options={CAPTION_STYLES}
+              defaultChecked="pop"
+            />
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Font
+            </legend>
+            <SelectorGrid
+              name="caption_font"
+              options={CAPTION_FONTS}
+              defaultChecked="anton"
+            />
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Sub animation
+            </legend>
+            <SelectorGrid
+              name="caption_sub"
+              options={CAPTION_SUBS}
+              defaultChecked="zoom"
+            />
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Theme
+            </legend>
+            <SelectorGrid
+              name="caption_theme"
+              options={CAPTION_THEMES}
+              defaultChecked="pop"
+            />
           </fieldset>
 
           <fieldset>

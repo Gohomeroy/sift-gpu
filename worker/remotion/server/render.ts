@@ -28,6 +28,9 @@ export async function renderClip(opts: {
   cues: Cue[];
   title: string;
   captionStyle: string;
+  captionFont?: string;
+  captionSub?: string;
+  captionTheme?: string;
   durationSeconds: number;
   outName: string;
   outDir: string;
@@ -40,6 +43,9 @@ export async function renderClip(opts: {
     cues: opts.cues,
     title: opts.title,
     captionStyle: opts.captionStyle,
+    captionFont: opts.captionFont,
+    captionSub: opts.captionSub,
+    captionTheme: opts.captionTheme,
     durationSeconds: opts.durationSeconds,
   };
 
@@ -61,8 +67,7 @@ export async function renderClip(opts: {
     codec: "h264",
     outputLocation: outputPath,
     inputProps,
-    trimBefore: 0,
-    trimAfter: frames - 1,
+    frameRange: [0, frames - 1],
     x264Preset: "faster",
     crf: 18,
   });

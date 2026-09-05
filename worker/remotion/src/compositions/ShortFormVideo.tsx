@@ -15,6 +15,9 @@ export type ShortFormProps = {
   cues: Cue[];
   title: string;
   captionStyle: string;
+  captionFont?: string;
+  captionSub?: string;
+  captionTheme?: string;
   durationSeconds: number;
 };
 
@@ -23,6 +26,9 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
   cues,
   title,
   captionStyle,
+  captionFont,
+  captionSub,
+  captionTheme,
   durationSeconds,
 }) => {
   const { width, height, fps } = useVideoConfig();
@@ -41,7 +47,13 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
           src={videoUrl}
           style={{ width, height, objectFit: "cover" }}
         />
-        <Captions cues={cues} style={captionStyle} />
+        <Captions
+          cues={cues}
+          style={captionStyle}
+          font={captionFont}
+          sub={captionSub}
+          theme={captionTheme}
+        />
         <ViralTitle title={title} />
         <ProgressBar durationSeconds={durationSeconds} />
       </Sequence>

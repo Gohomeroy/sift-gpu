@@ -188,6 +188,9 @@ export type ClipJob = {
   stage: string;
   progress: number;
   caption_style: string | null;
+  caption_font: string | null;
+  caption_sub: string | null;
+  caption_theme: string | null;
   clip_count: number;
   error: string | null;
   created_at: string;
@@ -203,6 +206,9 @@ export type Clip = {
   end_seconds: number | null;
   viral_score: number | null;
   caption_style: string | null;
+  caption_font: string | null;
+  caption_sub: string | null;
+  caption_theme: string | null;
   storage_path: string;
   caption: string | null;
   hashtags: string[] | string | null;

@@ -7,7 +7,7 @@ export const RemotionRoot: React.FC = () => {
     <>
       {/*
        * Long-running composition; the render server trims each job to the
-       * clip's real length via trimAfter (frames = durationSeconds * fps).
+       * clip's real length via frameRange (frames = durationSeconds * fps).
        */}
       <Composition
         id="ShortFormVideo"
@@ -21,7 +21,10 @@ export const RemotionRoot: React.FC = () => {
             videoUrl: "",
             cues: [],
             title: "",
-            captionStyle: "hormozi",
+            captionStyle: "pop",
+            captionFont: "anton",
+            captionSub: "zoom",
+            captionTheme: "pop",
             durationSeconds: 40,
           } satisfies ShortFormProps
         }

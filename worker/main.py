@@ -32,7 +32,14 @@ import vl
 
 
 def render_captions(
-    clip_path: Path, cues: list[dict], title: str, style: str, duration: float
+    clip_path: Path,
+    cues: list[dict],
+    title: str,
+    style: str,
+    duration: float,
+    font: str = "anton",
+    sub: str = "zoom",
+    theme: str = "pop",
 ) -> Path:
     """Ask the Remotion render server to burn captions; falls back to ffmpeg drawtext, then raw cut."""
     import json
@@ -47,6 +54,9 @@ def render_captions(
                 "cues": cues,
                 "title": title,
                 "captionStyle": style,
+                "captionFont": font,
+                "captionSub": sub,
+                "captionTheme": theme,
                 "durationSeconds": duration,
                 "outName": f"{clip_path.parent.name}_{clip_path.stem}",
             },
@@ -276,7 +286,10 @@ def process_job(job: dict) -> None:
         stage_pct = 62 + int((i / max(total_picks, 1)) * 30)
         db.report_stage(job_id, "cutting", stage_pct)
 
-        style = job.get("caption_style") or "hormozi"
+        style = job.get("caption_style") or "pop"
+        font = job.get("caption_font") or "anton"
+        sub = job.get("caption_sub") or "zoom"
+        theme = job.get("caption_theme") or "pop"
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
         section = picked_files[i] if i < len(picked_files) else None
@@ -296,7 +309,7 @@ def process_job(job: dict) -> None:
         duration_mod = reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe
         actual_duration = duration_mod.get_video_duration(raw_cut)
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
-        captioned = render_captions(raw_cut, cues, title, style, duration)
+        captioned = render_captions(raw_cut, cues, title, style, duration, font, sub, theme)
 
         if config.HOOKS_ENABLED:
             # Hook text overlay — punchy headline burned onto the clip.
@@ -325,6 +338,9 @@ def process_job(job: dict) -> None:
                 "end_seconds": w["end"],
                 "viral_score": score.to_percent(w["score01"]),
                 "caption_style": style,
+                "caption_font": font,
+                "caption_sub": sub,
+                "caption_theme": theme,
                 "storage_path": path,
                 "caption": caption_text,
                 "hashtags": tags,
