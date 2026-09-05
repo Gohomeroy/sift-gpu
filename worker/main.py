@@ -131,13 +131,17 @@ def process_job(job: dict) -> None:
         shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1 · Audio-only download (small + fast) → wav
+    # 1 · Single full-video download (≤1080p) — ONE YouTube hit per job.
+    #    YouTube tags datacenter IPs after a couple requests, so the old
+    #    audio+analysis+sections download storm kept getting bot-walled.
     db.report_stage(job_id, "downloading", 4)
-    audio_media = ingest.download_audio(job["source_url"], job_id)
-    db.report_stage(job_id, "downloading", 10)
-    audio = ingest.extract_audio(audio_media)
+    full_video = ingest.download_full_video(job["source_url"], job_id)
+    db.report_stage(job_id, "downloading", 12)
 
-    # 2 · Transcribe from audio alone (streams real progress — long videos
+    # 2 · Extract audio from the full video → wav
+    audio = ingest.extract_audio(full_video)
+
+    # 3 · Transcribe from audio alone (streams real progress — long videos
     #     take ~4-6x realtime on CPU, so the UI must see it moving)
     db.report_stage(job_id, "transcribing", 16)
     _last_tx = {"t": 0.0}
@@ -152,50 +156,42 @@ def process_job(job: dict) -> None:
 
     transcript = transcribe.transcribe(str(audio), on_progress=tx_progress)
 
-    # 3 · Candidate windows from transcript
+    # 4 · Candidate windows from transcript
     db.report_stage(job_id, "segmenting", 32)
     windows = segment.build_windows(transcript["segments"])
     if not windows:
         raise RuntimeError("No speech found in the source video.")
 
-    # 3b · Scene-aware windows from PySceneDetect (merges with transcript windows).
-    #     Needs a local file — download analysis_video first.
+    # 5 · Scene-aware windows from PySceneDetect (merges with transcript windows).
     scenes: list[tuple[float, float]] = []
-    analysis_video = None
     try:
-        analysis_video = ingest.download_analysis_video(job["source_url"], job_id)
-    except Exception as exc:
-        print(f"[main] analysis video unavailable: {exc}", flush=True)
-    try:
-        if analysis_video:
-            scenes = scene_detection.detect_scenes(analysis_video)
-            print(f"[main] detected {len(scenes)} scenes", flush=True)
-            scene_windows = scene_detection.build_scene_windows(
-                transcript["segments"], scenes
-            )
-            # Merge: keep unique windows (by start time) favoring scene windows
-            # when they align with transcript content.
-            seen_starts = {round(w["start"], 1) for w in windows}
-            for sw in scene_windows:
-                key = round(sw["start"], 1)
-                if key not in seen_starts:
-                    windows.append(sw)
-                    seen_starts.add(key)
-            windows.sort(key=lambda w: w["start"])
+        scenes = scene_detection.detect_scenes(full_video)
+        print(f"[main] detected {len(scenes)} scenes", flush=True)
+        scene_windows = scene_detection.build_scene_windows(
+            transcript["segments"], scenes
+        )
+        # Merge: keep unique windows (by start time) favoring scene windows
+        # when they align with transcript content.
+        seen_starts = {round(w["start"], 1) for w in windows}
+        for sw in scene_windows:
+            key = round(sw["start"], 1)
+            if key not in seen_starts:
+                windows.append(sw)
+                seen_starts.add(key)
+        windows.sort(key=lambda w: w["start"])
     except Exception as exc:
         print(f"[main] scene detection failed: {exc}", flush=True)
 
-    # 4 · Cheap energy analysis over the WHOLE video (visual senses) —
-    #     worst-format download; keyframe-only decode keeps it fast.
+    # 6 · Cheap energy analysis over the WHOLE video (visual senses).
     total_duration = float(windows[-1]["end"])
     db.report_stage(job_id, "analyzing", 38)
-    energy.analyze(windows, audio, analysis_video, total_duration)
+    energy.analyze(windows, audio, full_video, total_duration)
 
-    # 5 · Score every window (text + visual energy + optional centroids)
+    # 7 · Score every window (text + visual energy + optional centroids)
     db.report_stage(job_id, "scoring", 46)
     ranked = score.score_windows(windows)
 
-    # 6 · VL discovery sweep — watch the WHOLE video coarsely so visually-hot
+    # 8 · VL discovery sweep — watch the WHOLE video coarsely so visually-hot
     #     moments the transcript missed can still become clips.
     #     Skip if transcript already found strong candidates (score > 0.70)
     #     to save ~2-3 min of VL inference.
@@ -204,16 +200,16 @@ def process_job(job: dict) -> None:
     skip_discovery = top_score >= 0.70
     if skip_discovery:
         print(f"[main] skipping VL discovery — top transcript score {top_score:.2f} >= 0.70", flush=True)
-    elif vl.available() and analysis_video is not None:
+    elif vl.available():
         db.report_stage(job_id, "watching", 48)
         try:
-            discoveries = vl.discover(Path(analysis_video), total_duration, work_dir)
+            discoveries = vl.discover(full_video, total_duration, work_dir)
             print(f"[main] VL discovered {len(discoveries)} candidate ranges", flush=True)
         except Exception as exc:
             print(f"[main] VL discovery failed: {exc}", flush=True)
             discoveries = []
 
-    # 7 · Merge discoveries into the ranked pool.
+    # 9 · Merge discoveries into the ranked pool.
     #     Reserve 30% of clip_count slots for VL discoveries (at least 1).
     discover_slots = max(1, min(len(discoveries), clip_count // 3))
     if discoveries:
@@ -221,27 +217,12 @@ def process_job(job: dict) -> None:
             discoveries, ranked, transcript["segments"], discover_slots
         )
 
-    # 8 · Pick the top N as finalists and download their video sections.
+    # 10 · Pick the top N as finalists.
     finalists = ranked[: clip_count + discover_slots]
-    db.report_stage(job_id, "downloading", 52)
-    sections = [(float(w["start"]), float(w["end"])) for w in finalists]
-    section_files = ingest.download_sections(job["source_url"], job_id, sections)
 
-    # Fallback: if sections failed wholesale, grab the full video once.
-    full_video: Path | None = None
-    if all(f is None for f in section_files):
-        print("[main] section downloads failed — falling back to full video", flush=True)
-        full_video = ingest.download_full_video(job["source_url"], job_id)
-
-    # 9 · Qwen2.5-VL watches every finalist (both transcript-picked + discovered)
+    # 11 · Qwen2.5-VL watches every finalist (both transcript-picked + discovered)
     db.report_stage(job_id, "watching", 58)
-    finalists = vl.watch_finalists(
-        Path(analysis_video) if analysis_video else (full_video or Path()),
-        finalists,
-        section_files,
-        full_video,
-        work_dir,
-    )
+    finalists = vl.watch_finalists(full_video, finalists, [], full_video, work_dir)
 
     # 10 · Dedup finalists: if two windows overlap >50%, keep the higher-scored one.
     def _overlap(a, b):
@@ -272,18 +253,12 @@ def process_job(job: dict) -> None:
             print(f"[main] hook snap skipped for {w.get('start')}: {exc}", flush=True)
     total_picks = len(picks)
 
-    # 10c · Re-download sections for the FINAL picks (order-aligned with `picks`).
-    #       vl.watch_finalists re-sorts finalists by score, so the pre-watch
-    #       `section_files` no longer line up with `picks` — using them would
-    #       cut clip N from clip N-1's video (wrong content + mismatched captions).
-    db.report_stage(job_id, "downloading", 56)
-    picked_sections = [(float(w["start"]), float(w["end"])) for w in picks]
-    picked_files = ingest.download_sections(job["source_url"], job_id, picked_sections)
-    if all(f is None for f in picked_files):
-        print("[main] final section downloads failed — falling back to full video for cuts", flush=True)
+    # 13 · Cut each final pick straight from the local full video.
+    #       (No per-section downloads — that's a second YouTube hit per clip.)
+    db.report_stage(job_id, "cutting", 60)
 
     for i, w in enumerate(picks):
-        stage_pct = 62 + int((i / max(total_picks, 1)) * 30)
+        stage_pct = 66 + int((i / max(total_picks, 1)) * 30)
         db.report_stage(job_id, "cutting", stage_pct)
 
         style = job.get("caption_style") or "pop"
@@ -292,14 +267,8 @@ def process_job(job: dict) -> None:
         theme = job.get("caption_theme") or "pop"
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
-        section = picked_files[i] if i < len(picked_files) else None
         reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
-        if section is not None:
-            reframe_fn(Path(section), 0.0, float(w["end"]) - float(w["start"]), raw_cut)
-        else:
-            if full_video is None:
-                full_video = ingest.download_full_video(job["source_url"], job_id)
-            reframe_fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
+        reframe_fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
 
         title = titles.make_title(w)
         cues = captions_mod.build_cues(transcript["words"], float(w["start"]), float(w["end"]))

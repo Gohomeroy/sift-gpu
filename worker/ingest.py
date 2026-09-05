@@ -19,18 +19,20 @@ import config
 # Node + EJS fetch solve YouTube's JS challenge when yt-dlp runs from PyPI
 # (pip package has no bundled scripts; node is a hard dep for Remotion anyway).
 EJS_ARGS = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
+# Throttle requests + retry to ride out YouTube's transient IP tag-of-war.
+RELAX_ARGS = ["--sleep-requests", "1.0", "--retries", "4", "--retry-sleep", "15"]
 STRATEGIES: list[list[str]] = []
 if config.YTDLP_COOKIES_FILE:
-    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE), *EJS_ARGS])
+    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE), *EJS_ARGS, *RELAX_ARGS])
 STRATEGIES += [
-    ["--extractor-args", "youtube:player_client=android,web_safari", *EJS_ARGS],
+    ["--extractor-args", "youtube:player_client=android,web_safari", *EJS_ARGS, *RELAX_ARGS],
     *(
-        [["--cookies-from-browser", b, *EJS_ARGS] for b in [
+        [["--cookies-from-browser", b, *EJS_ARGS, *RELAX_ARGS] for b in [
             os.environ.get("YTDLP_COOKIES_FROM", ""),
             "chrome", "edge", "brave", "firefox",
         ] if b]
     ),
-    [*EJS_ARGS],
+    [*EJS_ARGS, *RELAX_ARGS],
 ]
 
 

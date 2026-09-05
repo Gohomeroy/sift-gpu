@@ -363,7 +363,8 @@ def watch_finalists(
             w["vl"] = None
             continue
 
-        v_start = 0.0 if section_files[i] else float(w["start"])
+        sec = section_files[i] if i < len(section_files) else None
+        v_start = 0.0 if sec else float(w["start"])
         v_end = v_start + float(w["end"]) - float(w["start"])
 
         frames_dir = work_dir / f"frames_{i}"
