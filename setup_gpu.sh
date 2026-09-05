@@ -31,6 +31,10 @@ MODEL_MM="$MODEL_DIR/mmproj-F16.gguf"
 LLAMA_BUILD="${LLAMA_BUILD:-/root/llama-build}"
 LLAMA_BIN="/usr/local/bin/llama-server"
 LLAMA_PORT=8080
+LLAMA_CTX="${LLAMA_CTX:-16384}"
+QWEN8B_ENABLED="${QWEN8B_ENABLED:-1}"
+QWEN_PORT=8082
+QWEN_8B_MODEL="$MODEL_DIR/Qwen3-8B-Q4_K_M.gguf"
 RENDER_PORT=3002
 WORK_DIR="$REPO_DIR/tmp"
 WORKER_DIR="$REPO_DIR/worker"
@@ -181,6 +185,24 @@ print('  Done')
     log "  ✓ Models downloaded"
 fi
 
+# Qwen3-8B text model (opencode local-qwen + general use)
+if [ "$QWEN8B_ENABLED" != "1" ]; then
+    log "  Qwen3-8B model skipped (QWEN8B_ENABLED=$QWEN8B_ENABLED)"
+elif [ -f "$QWEN_8B_MODEL" ]; then
+    log "  Qwen3-8B model already downloaded"
+else
+    log "  Downloading Qwen3-8B-Q4_K_M (~4.9GB)..."
+    python3 -c "
+from huggingface_hub import hf_hub_download
+import os
+d = '$MODEL_DIR'
+t = os.environ.get('HF_TOKEN', '')
+hf_hub_download('unsloth/Qwen3-8B-GGUF', 'Qwen3-8B-Q4_K_M.gguf', local_dir=d, token=t)
+print('  Done')
+"
+    log "  ✓ Qwen3-8B model downloaded"
+fi
+
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 6: Clone / update sift repo
 # ══════════════════════════════════════════════════════════════════════════
@@ -242,13 +264,13 @@ pkill -f "tsx server" 2>/dev/null || true
 pkill -f "python3 -u main" 2>/dev/null || true
 sleep 2
 
-# 8a. llama-server
+# 8a. llama-server (Qwen3-VL, virality scorer)
 log "  Starting llama-server on port $LLAMA_PORT..."
 llama-server \
     --model "$MODEL_Q4" \
     --mmproj "$MODEL_MM" \
     --port "$LLAMA_PORT" \
-    --ctx-size 4096 \
+    --ctx-size "$LLAMA_CTX" \
     --threads 4 \
     --n-gpu-layers 99 \
     --flash-attn on \
@@ -272,7 +294,35 @@ for i in $(seq 1 120); do
     sleep 3
 done
 
-# 8b. Remotion render server
+# 8b. Qwen3-8B text model (localhost only — opencode tunnel + utilities)
+if [ "$QWEN8B_ENABLED" = "1" ]; then
+    log "  Starting Qwen3-8B on port $QWEN_PORT..."
+    llama-server \
+        --model "$QWEN_8B_MODEL" \
+        --port "$QWEN_PORT" \
+        --ctx-size 8192 \
+        --threads 4 \
+        --n-gpu-layers 99 \
+        --flash-attn on \
+        --host 0.0.0.0 \
+        > /tmp/llama-8b.log 2>&1 &
+    QWEN_PID=$!
+    echo "$QWEN_PID" > /tmp/llama-8b.pid
+    for i in $(seq 1 120); do
+        if curl -sf http://localhost:$QWEN_PORT/health > /dev/null 2>&1; then
+            log "  ✓ Qwen3-8B ready (PID: $QWEN_PID)"
+            break
+        fi
+        if ! kill -0 $QWEN_PID 2>/dev/null; then
+            warn "  Qwen3-8B died — check /tmp/llama-8b.log"
+            tail -10 /tmp/llama-8b.log
+            break
+        fi
+        sleep 3
+    done
+fi
+
+# 8c. Remotion render server
 log "  Starting Remotion on port $RENDER_PORT..."
 cd "$REPO_DIR/worker/remotion"
 PORT=$RENDER_PORT RENDER_FILES_DIR=$WORK_DIR npx tsx server/index.ts > /tmp/render-server.log 2>&1 &
@@ -289,7 +339,7 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# 8c. Python worker
+# 8d. Python worker
 log "  Starting worker..."
 cd "$WORKER_DIR"
 nohup python3 -u main.py > /tmp/worker.log 2>&1 &
@@ -308,16 +358,25 @@ echo "╔═══════════════════════�
 echo "║                    SERVICE STATUS                           ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 
-# llama-server
+# llama-server (Qwen3-VL)
 if curl -sf http://localhost:$LLAMA_PORT/health > /dev/null 2>&1; then
-    echo "║  llama-server (VLM):    ✓ RUNNING on port $LLAMA_PORT            ║"
+    echo "║  llama-server (VLM):    ✓ RUNNING on port $LLAMA_PORT        ║"
 else
     echo "║  llama-server (VLM):    ✗ DOWN                                  ║"
 fi
 
+# Qwen3-8B
+if [ "$QWEN8B_ENABLED" = "1" ]; then
+    if curl -sf http://localhost:$QWEN_PORT/health > /dev/null 2>&1; then
+        echo "║  llama-server (8B):     ✓ RUNNING on port $QWEN_PORT        ║"
+    else
+        echo "║  llama-server (8B):     ✗ DOWN                                  ║"
+    fi
+fi
+
 # Remotion
 if curl -sf http://localhost:$RENDER_PORT/health > /dev/null 2>&1; then
-    echo "║  Remotion (render):     ✓ RUNNING on port $RENDER_PORT            ║"
+    echo "║  Remotion (render):     ✓ RUNNING on port $RENDER_PORT        ║"
 else
     echo "║  Remotion (render):     ✗ DOWN (will use ffmpeg fallback)         ║"
 fi
