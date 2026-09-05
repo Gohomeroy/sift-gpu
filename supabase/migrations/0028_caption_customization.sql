@@ -54,6 +54,15 @@ alter table public.clips
 
 -- 3) create_clip_job — preserves the Traxn Studios owner exemption from 0027,
 --    replaces the style whitelist, and stores the new dimensions.
+--
+-- Drop every historical overload (created across 0022/0024/0025/0027)
+-- so the function name resolves unambiguously to the new signature.
+-- CREATE OR REPLACE with a different arg count leaves old overloads behind,
+-- and GRANT can only target an exact function signature.
+drop function if exists public.create_clip_job(uuid, text, text);
+drop function if exists public.create_clip_job(uuid, text, text, text);
+drop function if exists public.create_clip_job(uuid, text, text, text, int);
+
 create or replace function public.create_clip_job(
   p_org uuid,
   p_source_url text,
@@ -132,15 +141,7 @@ begin
   return v_id;
 end $$;
 
-grant execute on function public.create_clip_job(uuid, text, text, text) to authenticated;
-grant execute on function public.create_clip_job(uuid, text, text, text, text) to authenticated;
-grant execute on function public.create_clip_job(uuid, text, text, text, text, text) to authenticated;
-grant execute on function public.create_clip_job(uuid, text, text, text, text, text, text) to authenticated;
 grant execute on function public.create_clip_job(uuid, text, text, text, text, text, text, int) to authenticated;
-revoke execute on function public.create_clip_job(uuid, text, text, text) from anon, public;
-revoke execute on function public.create_clip_job(uuid, text, text, text, text) from anon, public;
-revoke execute on function public.create_clip_job(uuid, text, text, text, text, text) from anon, public;
-revoke execute on function public.create_clip_job(uuid, text, text, text, text, text, text) from anon, public;
 revoke execute on function public.create_clip_job(uuid, text, text, text, text, text, text, int) from anon, public;
 
 commit;
