@@ -22,6 +22,7 @@
 
 # ── Config ────────────────────────────────────────────────────────────────
 export DEBIAN_FRONTEND=noninteractive
+export PIP_BREAK_SYSTEM_PACKAGES=1
 REPO_URL="https://github.com/Gohomeroy/sift-gpu.git"
 REPO_DIR="${REPO_DIR:-/root/sift}"
 MODEL_DIR="$REPO_DIR/models"
