@@ -16,18 +16,21 @@ import config
 # YouTube bot-walls anonymous web-client downloads; android+safari player
 # clients dodge it without cookies. Browser cookies remain as fallback.
 # A cookie file (Netscape format) beats all of them.
+# Node + EJS fetch solve YouTube's JS challenge when yt-dlp runs from PyPI
+# (pip package has no bundled scripts; node is a hard dep for Remotion anyway).
+EJS_ARGS = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
 STRATEGIES: list[list[str]] = []
 if config.YTDLP_COOKIES_FILE:
-    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE)])
+    STRATEGIES.append(["--cookies", str(config.YTDLP_COOKIES_FILE), *EJS_ARGS])
 STRATEGIES += [
-    ["--extractor-args", "youtube:player_client=android,web_safari"],
+    ["--extractor-args", "youtube:player_client=android,web_safari", *EJS_ARGS],
     *(
-        [["--cookies-from-browser", b] for b in [
+        [["--cookies-from-browser", b, *EJS_ARGS] for b in [
             os.environ.get("YTDLP_COOKIES_FROM", ""),
             "chrome", "edge", "brave", "firefox",
         ] if b]
     ),
-    [],
+    [*EJS_ARGS],
 ]
 
 
