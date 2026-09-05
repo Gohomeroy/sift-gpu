@@ -102,9 +102,14 @@ def download_sections(
     source_url: str,
     job_id: str,
     sections: list[tuple[float, float]],
-    height: int = 720,
+    height: int = 1080,
 ) -> list[Path | None]:
-    """Download only the winning windows as video files (index-aligned)."""
+    """Download only the winning windows as video files (index-aligned).
+
+    Default to 1080p (not 720p) so the 9:16 vertical crop keeps enough native
+    resolution to look crisp when reframed to 1080x1920. Upscaling a 720p
+    source (~405px wide after the 9:16 vertical crop) to 1080 looks soft/blurry.
+    """
     out_dir = config.WORK_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
 

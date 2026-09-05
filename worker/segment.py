@@ -138,7 +138,11 @@ def _build_arc(
     payoff_text = ""
 
     saw_question = _is_question(str(hook.get("text", "")))
-    prev_was_question = saw_question
+    # Whether the segment directly BEFORE the one being scored was a question.
+    # Initially there is no preceding segment, so this must be False. If we set
+    # it to `saw_question`, a question-hook makes the very next segment look like
+    # the payoff (+0.6 in _payoff_score) and the arc collapses to ~12s.
+    prev_was_question = False
 
     j = hook_idx + 1
     while j < len(transcript_segments):

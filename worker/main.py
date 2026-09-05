@@ -262,6 +262,16 @@ def process_job(job: dict) -> None:
             print(f"[main] hook snap skipped for {w.get('start')}: {exc}", flush=True)
     total_picks = len(picks)
 
+    # 10c · Re-download sections for the FINAL picks (order-aligned with `picks`).
+    #       vl.watch_finalists re-sorts finalists by score, so the pre-watch
+    #       `section_files` no longer line up with `picks` — using them would
+    #       cut clip N from clip N-1's video (wrong content + mismatched captions).
+    db.report_stage(job_id, "downloading", 56)
+    picked_sections = [(float(w["start"]), float(w["end"])) for w in picks]
+    picked_files = ingest.download_sections(job["source_url"], job_id, picked_sections)
+    if all(f is None for f in picked_files):
+        print("[main] final section downloads failed — falling back to full video for cuts", flush=True)
+
     for i, w in enumerate(picks):
         stage_pct = 62 + int((i / max(total_picks, 1)) * 30)
         db.report_stage(job_id, "cutting", stage_pct)
@@ -269,7 +279,7 @@ def process_job(job: dict) -> None:
         style = job.get("caption_style") or "hormozi"
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
-        section = section_files[i] if i < len(section_files) else None
+        section = picked_files[i] if i < len(picked_files) else None
         reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
         if section is not None:
             reframe_fn(Path(section), 0.0, float(w["end"]) - float(w["start"]), raw_cut)
