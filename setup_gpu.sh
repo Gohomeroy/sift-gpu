@@ -21,6 +21,7 @@
 # No set -e — we handle errors per-step so apt warnings don't kill the script
 
 # ── Config ────────────────────────────────────────────────────────────────
+export DEBIAN_FRONTEND=noninteractive
 REPO_URL="https://github.com/Gohomeroy/sift-gpu.git"
 REPO_DIR="/root/sift"
 MODEL_DIR="/root/sift/models"
@@ -35,7 +36,7 @@ WORKER_DIR="$REPO_DIR/worker"
 # Supabase (from your .env — update if keys change)
 SUPABASE_URL="https://lmgrfygmkdbejiyrbchp.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtZ3JmeWdta2RiZWppeXJiY2hwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzUxNTYxMiwiZXhwIjoyMTAzMDkxNjEyfQ.2R8vhiqlvbCz7DjiCPOF22LK02ULi74qR_L-gTpBKpA"
-HF_TOKEN="${HF_TOKEN:-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}"
+export HF_TOKEN="${HF_TOKEN:-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}"
 
 log() { echo -e "\033[1;32m[$(date +%H:%M:%S)] $*\033[0m"; }
 warn() { echo -e "\033[1;33m[$(date +%H:%M:%S)] WARNING: $*\033[0m"; }
@@ -169,13 +170,15 @@ fi
 log "═══ Step 6/9: Sift repo ═══"
 if [ -d "$REPO_DIR/.git" ]; then
     cd "$REPO_DIR"
-    git checkout master 2>/dev/null || git checkout -b master
+    git fetch origin master 2>&1 | tail -2
+    git checkout -B master origin/master 2>&1 | tail -2
     git pull origin master 2>&1 | tail -3
-    log "  ✓ Repo updated"
+    log "  ✓ Repo synced to master"
 else
     git clone "$REPO_URL" "$REPO_DIR" 2>&1 | tail -3
     cd "$REPO_DIR"
-    git checkout master 2>/dev/null || git checkout -b master
+    git fetch origin master 2>&1 | tail -2
+    git checkout -B master origin/master 2>&1 | tail -2
     log "  ✓ Repo cloned (master branch)"
 fi
 
