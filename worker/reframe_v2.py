@@ -43,11 +43,11 @@ def _enc_args():
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
 
 # Smoothing parameters (from OpenShorts SmoothedCameraman)
-SAFE_ZONE_RATIO = 0.25  # camera only moves when subject leaves this zone
-JUMP_CONFIRM_FRAMES = 3  # big moves must repeat N times before following
+SAFE_ZONE_RATIO = 0.10  # camera moves when subject strays >10% from center
+JUMP_CONFIRM_FRAMES = 2  # big moves must repeat N times before following
 SCENE_CUT_SNAP_SPEED = 999  # instant snap on scene cut
-SLOW_PAN_SPEED = 3  # px/frame for slow pan
-FAST_PAN_SPEED = 15  # px/frame for >50% distance jumps
+SLOW_PAN_SPEED = 10  # px/frame for slow pan
+FAST_PAN_SPEED = 24  # px/frame for >50% distance jumps
 
 # Detection strides
 MEDIAPIPE_STRIDE = 4  # detect every N frames
@@ -278,10 +278,10 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
     audio_path = out_path.parent / (out_path.stem + "_audio.m4a")
     silent_path = out_path.parent / (out_path.stem + "_silent.mp4")
 
-    # 1) Wide cut
+    # 1) Wide cut — stream copy, no re-encode (instant, lossless).
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-         "-i", str(video), *_enc_args(),
+         "-i", str(video), "-c", "copy",
          str(seg_path)],
         capture_output=True, timeout=60 * 30, check=True,
     )
@@ -294,7 +294,7 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
         capture_output=True, timeout=60 * 30, check=True,
     )
 
-    # 2) Moving-crop in OpenCV (video only)
+    # 2) Moving-crop to vertical — stream raw frames straight into ffmpeg NVENC.
     cap = cv2.VideoCapture(str(seg_path))
     fps_in = cap.get(cv2.CAP_PROP_FPS) or 30
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -306,11 +306,18 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
         centers,
     )
 
-    writer = cv2.VideoWriter(
-        str(silent_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps_in,
-        (OUT_W, OUT_H),
+    enc_args = _enc_args()
+    pipe = subprocess.Popen(
+        [
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", "bgr24",
+            "-s", f"{OUT_W}x{OUT_H}", "-r", f"{fps_in}",
+            "-i", "-",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
+            str(silent_path),
+        ],
+        stdin=subprocess.PIPE,
     )
     i = 0
     while True:
@@ -320,21 +327,22 @@ def cut_and_reframe_v2(video: Path, start: float, end: float, out_path: Path) ->
         c = xs[min(i, len(xs) - 1)]
         x0 = int(max(0, min(c - crop_w / 2, frame.shape[1] - crop_w)))
         crop = frame[:, x0 : x0 + crop_w]
-        writer.write(cv2.resize(crop, (OUT_W, OUT_H), interpolation=cv2.INTER_LANCZOS4))
+        out = cv2.resize(crop, (OUT_W, OUT_H), interpolation=cv2.INTER_LANCZOS4)
+        pipe.stdin.write(out.tobytes())
         i += 1
     cap.release()
-    writer.release()
+    pipe.stdin.close()
+    pipe.wait()
 
     if i == 0:
         raise RuntimeError("v2 reframe produced no frames")
 
-    # 3) Mux audio
+    # 3) Mux audio (stream copy — lossless)
     proc = subprocess.run(
         ["ffmpeg", "-y",
          "-i", str(silent_path), "-i", str(audio_path),
          "-map", "0:v:0", "-map", "1:a:0",
-         *_enc_args(),
-         *audio_args,
+         "-c:v", "copy", "-c:a", "copy",
          str(out_path)],
         capture_output=True, text=True, timeout=60 * 30,
     )

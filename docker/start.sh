@@ -77,7 +77,7 @@ fi
 # ── 3. Start Remotion render server ────────────────────────────────────
 echo "[3/4] Starting Remotion render server on port ${RENDER_PORT}..."
 cd /app/remotion
-PORT=$RENDER_PORT npx tsx server/index.ts > /tmp/render-server.log 2>&1 &
+PORT=$RENDER_PORT RENDER_FILES_DIR=$WORK_DIR npx tsx server/index.ts > /tmp/render-server.log 2>&1 &
 RENDER_PID=$!
 echo "  Render server PID: $RENDER_PID"
 cd /app/worker

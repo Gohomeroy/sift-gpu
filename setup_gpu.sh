@@ -253,7 +253,7 @@ done
 # 8b. Remotion render server
 log "  Starting Remotion on port $RENDER_PORT..."
 cd "$REPO_DIR/worker/remotion"
-PORT=$RENDER_PORT npx tsx server/index.ts > /tmp/render-server.log 2>&1 &
+PORT=$RENDER_PORT RENDER_FILES_DIR=$WORK_DIR npx tsx server/index.ts > /tmp/render-server.log 2>&1 &
 RENDER_PID=$!
 echo "$RENDER_PID" > /tmp/render-server.pid
 cd "$WORKER_DIR"

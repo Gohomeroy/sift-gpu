@@ -189,10 +189,10 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
     probe.release()
     crop_w = min(int(src_h * 9 / 16), src_w)
 
-    # 1) Wide cut of the segment (with audio).
+    # 1) Wide cut of the segment — stream copy, no re-encode (instant, lossless).
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-         "-i", str(video), *_enc_args(),
+         "-i", str(video), "-c", "copy",
          str(seg_path)],
         capture_output=True, timeout=60 * 30, check=True,
     )
@@ -205,7 +205,7 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
         capture_output=True, timeout=60 * 30, check=True,
     )
 
-    # 2) Moving-crop to vertical in OpenCV (video only).
+    # 2) Moving-crop to vertical — stream raw frames straight into ffmpeg NVENC.
     cap = cv2.VideoCapture(str(seg_path))
     fps_in = cap.get(cv2.CAP_PROP_FPS) or 30
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -217,11 +217,18 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
         centers,
     )
 
-    writer = cv2.VideoWriter(
-        str(silent_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps_in,
-        (OUT_W, OUT_H),
+    enc_args = _enc_args()
+    pipe = subprocess.Popen(
+        [
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", "bgr24",
+            "-s", f"{OUT_W}x{OUT_H}", "-r", f"{fps_in}",
+            "-i", "-",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
+            str(silent_path),
+        ],
+        stdin=subprocess.PIPE,
     )
     i = 0
     while True:
@@ -231,21 +238,22 @@ def cut_and_reframe(video: Path, start: float, end: float, out_path: Path) -> Pa
         c = xs[min(i, len(xs) - 1)]
         x0 = int(max(0, min(c - crop_w / 2, frame.shape[1] - crop_w)))
         crop = frame[:, x0 : x0 + crop_w]
-        writer.write(cv2.resize(crop, (OUT_W, OUT_H), interpolation=cv2.INTER_LANCZOS4))
+        out = cv2.resize(crop, (OUT_W, OUT_H), interpolation=cv2.INTER_LANCZOS4)
+        pipe.stdin.write(out.tobytes())
         i += 1
     cap.release()
-    writer.release()
+    pipe.stdin.close()
+    pipe.wait()
 
     if i == 0:
         raise RuntimeError("tracked reframe produced no frames")
 
-    # 3) Mux the extracted audio under the reframed video.
+    # 3) Mux the extracted audio under the reframed video (stream copy — lossless).
     proc = subprocess.run(
         ["ffmpeg", "-y",
          "-i", str(silent_path), "-i", str(audio_path),
          "-map", "0:v:0", "-map", "1:a:0",
-         *_enc_args(),
-         *audio_args,
+         "-c:v", "copy", "-c:a", "copy",
          str(out_path)],
         capture_output=True, text=True, timeout=60 * 30,
     )

@@ -48,13 +48,13 @@ def render_captions(
                 "title": title,
                 "captionStyle": style,
                 "durationSeconds": duration,
-                "outName": clip_path.stem,
+                "outName": f"{clip_path.parent.name}_{clip_path.stem}",
             },
             timeout=60 * 15,
         )
         resp.raise_for_status()
         out = Path(resp.json()["outputPath"])
-        if out.exists():
+        if out.exists() and out.stat().st_size > 1000:
             return out
     except Exception:
         pass
@@ -271,14 +271,17 @@ def process_job(job: dict) -> None:
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
         captioned = render_captions(raw_cut, cues, title, style, duration)
 
-        # Hook text overlay — punchy headline burned onto the clip.
-        hook_path = work_dir / f"clip_{i}_hooked.mp4"
-        final = hooks.add_hook_to_video(
-            captioned, title, hook_path,
-            style=config.HOOK_STYLE,
-            position=config.HOOK_POSITION,
-            duration=min(config.HOOK_DURATION, duration),
-        )
+        if config.HOOKS_ENABLED:
+            # Hook text overlay — punchy headline burned onto the clip.
+            hook_path = work_dir / f"clip_{i}_hooked.mp4"
+            final = hooks.add_hook_to_video(
+                captioned, title, hook_path,
+                style=config.HOOK_STYLE,
+                position=config.HOOK_POSITION,
+                duration=min(config.HOOK_DURATION, duration),
+            )
+        else:
+            final = captioned
 
         caption_text, tags = titles.make_caption_and_tags(w, w.get("vl"))
         reasoning = None

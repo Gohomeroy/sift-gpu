@@ -42,6 +42,7 @@ VL_DISCOVER_MIN_DUR = float(os.environ.get("VL_DISCOVER_MIN_DUR", "15"))
 VL_DISCOVER_MAX_DUR = float(os.environ.get("VL_DISCOVER_MAX_DUR", "60"))
 
 # ── Hook overlays ────────────────────────────────────────────────────────
+HOOKS_ENABLED = os.environ.get("HOOKS_ENABLED", "0") == "1"
 HOOK_STYLE = os.environ.get("HOOK_STYLE", "classic")
 HOOK_POSITION = os.environ.get("HOOK_POSITION", "top")
 HOOK_DURATION = float(os.environ.get("HOOK_DURATION", "4"))
