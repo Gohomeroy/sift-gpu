@@ -47,6 +47,11 @@ export const CAPTION_THEMES = [
   { id: "poppin", label: "POPPIN", hint: "White · pink accent" },
 ] as const;
 
+export const REFRAME_STYLES = [
+  { id: "track", label: "TRACK FACE", hint: "Follow-cam on the speaker" },
+  { id: "blur", label: "BLUR FILL", hint: "Fit widescreen · blurred same-video bg" },
+] as const;
+
 function SelectorGrid({
   name,
   options,
@@ -118,6 +123,17 @@ export function NewJobForm({
               <Input id="j-title" name="title" required minLength={3} maxLength={120} placeholder="Podcast ep. 42" />
             </Field>
           </div>
+
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Frame mode
+            </legend>
+            <SelectorGrid
+              name="reframe_style"
+              options={REFRAME_STYLES}
+              defaultChecked="track"
+            />
+          </fieldset>
 
           <fieldset>
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
@@ -320,6 +336,11 @@ export function ClipCard({
           {clip.caption_style && (
             <Chip dot={false} tone="neutral">
               {clip.caption_style}
+            </Chip>
+          )}
+          {clip.reframe_style && (
+            <Chip dot={false} tone="accent">
+              {clip.reframe_style === "blur" ? "blur fill" : "track face"}
             </Chip>
           )}
           {(clip.start_seconds !== null || clip.end_seconds !== null) && (

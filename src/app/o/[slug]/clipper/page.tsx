@@ -131,6 +131,11 @@ export default async function ClipperPage({
                     <Chip tone="neutral">
                       {job.clip_count ?? 3} clips
                     </Chip>
+                    {job.reframe_style && (
+                      <Chip tone="accent">
+                        {job.reframe_style === "blur" ? "blur fill" : "track"}
+                      </Chip>
+                    )}
                     <span className="ml-auto">
                       {(job.created_by === member.user_id ||
                         org.owner_id === member.user_id) && (

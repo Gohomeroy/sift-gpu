@@ -23,6 +23,7 @@ import hooks
 import ingest
 import poster
 import reframe
+import reframe_blur
 import reframe_v2
 import scene_detection
 import score
@@ -262,7 +263,19 @@ def process_job(job: dict) -> None:
     #       (5 clips took ~8min of wall time in rendering alone).
     db.report_stage(job_id, "cutting", 60)
 
-    reframe_fn = reframe_v2.cut_and_reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe.cut_and_reframe
+    reframe_style = (job.get("reframe_style") or "track").lower()
+    # Pick the reframe engine from the job choice:
+    #   track → face-tracking follow-cam (v2 when enabled, else v1)
+    #   blur  → widescreen fits inside 1080x1920 with enlarged blurred bg
+    if reframe_style == "blur":
+        reframe_mod = reframe_blur
+    else:
+        reframe_mod = reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe
+    reframe_fn = (
+        reframe_mod.cut_and_reframe_v2
+        if hasattr(reframe_mod, "cut_and_reframe_v2")
+        else reframe_mod.cut_and_reframe
+    )
 
     def process_one(i: int, w: dict) -> None:
         stage_pct = 66 + int((i / max(total_picks, 1)) * 30)
@@ -281,8 +294,7 @@ def process_job(job: dict) -> None:
 
         db.report_stage(job_id, "rendering", min(stage_pct + 4, 95))
         # Use the actual cut duration, not the window duration, to avoid dark padding.
-        duration_mod = reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe
-        actual_duration = duration_mod.get_video_duration(raw_cut)
+        actual_duration = reframe_mod.get_video_duration(raw_cut)
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
         captioned = render_captions(raw_cut, cues, title, style, duration, font, sub, theme)
 
@@ -316,6 +328,7 @@ def process_job(job: dict) -> None:
                 "caption_font": font,
                 "caption_sub": sub,
                 "caption_theme": theme,
+                "reframe_style": reframe_style,
                 "storage_path": path,
                 "caption": caption_text,
                 "hashtags": tags,

@@ -16,6 +16,7 @@ export async function createClipJobAction(
   const captionFont = String(formData.get("caption_font") ?? "anton");
   const captionSub = String(formData.get("caption_sub") ?? "zoom");
   const captionTheme = String(formData.get("caption_theme") ?? "pop");
+  const reframeStyle = String(formData.get("reframe_style") ?? "track");
   const clipCount = Math.max(1, Math.min(10, Number(formData.get("clip_count")) || 3));
 
   if (!sourceUrl.startsWith("http")) {
@@ -33,6 +34,7 @@ export async function createClipJobAction(
     p_caption_font: captionFont,
     p_caption_sub: captionSub,
     p_caption_theme: captionTheme,
+    p_reframe_style: reframeStyle,
     p_clip_count: clipCount,
   });
 

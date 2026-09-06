@@ -111,6 +111,7 @@ def insert_clip(row: dict[str, Any]) -> None:
         "caption_font": row.get("caption_font"),
         "caption_sub": row.get("caption_sub"),
         "caption_theme": row.get("caption_theme"),
+        "reframe_style": row.get("reframe_style"),
         "storage_path": row["storage_path"],
         "caption": row.get("caption"),
         "hashtags": json.dumps(row.get("hashtags") or []),

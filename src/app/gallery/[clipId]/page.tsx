@@ -134,6 +134,11 @@ export default async function ClipPage({ params }: Props) {
                   {clip.caption_style}
                 </span>
               )}
+              {clip.reframe_style && (
+                <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                  {clip.reframe_style === "blur" ? "blur fill" : "track face"}
+                </span>
+              )}
             </div>
           )}
 

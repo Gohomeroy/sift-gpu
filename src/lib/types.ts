@@ -191,6 +191,7 @@ export type ClipJob = {
   caption_font: string | null;
   caption_sub: string | null;
   caption_theme: string | null;
+  reframe_style: string | null;
   clip_count: number;
   error: string | null;
   created_at: string;
@@ -209,6 +210,7 @@ export type Clip = {
   caption_font: string | null;
   caption_sub: string | null;
   caption_theme: string | null;
+  reframe_style: string | null;
   storage_path: string;
   caption: string | null;
   hashtags: string[] | string | null;
