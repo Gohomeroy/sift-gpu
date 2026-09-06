@@ -6,7 +6,7 @@ Two engines are planned behind one job contract:
 
 | Provider | Detection | Status |
 | --- | --- | --- |
-| `local` | faster-whisper + heuristics + semantic centroids + **Qwen2.5-VL** watch pass | **built** (`worker/`) |
+| `local` | faster-whisper + heuristics + semantic centroids + **Qwen3-VL-8B** watch pass | **built** (`worker/`) |
 | `reka` | Reka Clip API (proprietary Reka Flash; returns finished clips w/ ai_score) | next phase |
 
 ## Pipeline (local provider)
@@ -18,7 +18,7 @@ queued
   → segmenting    sentences → 18-62s windows, pause-aware openers
   → scoring       hook/power/emotion/pacing heuristics
                   + MiniLM cosine vs viral centroids (optional CSV)
-  → watching      top-8 windows → Qwen2.5-VL (llama-server) verdict JSON;
+  → watching      top-8 windows → Qwen3-VL-8B (llama-server) verdict JSON;
                   skipped silently when no server configured
   → cutting       top-3 windows · OpenCV face track @2fps → moving 9:16 crop
   → rendering     Remotion 1080x1920 · word-pop captions (hormozi/beast/
@@ -39,12 +39,17 @@ pip install -r requirements.txt
 copy .env.example .env        # fill SUPABASE_URL + SERVICE ROLE KEY
 ```
 
-Optional Qwen2.5-VL pass (~5GB download):
+Optional Qwen3-VL-8B pass (~6GB download):
 
 ```bash
-# llama.cpp build with multimodal support:
-llama-server -m Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf ^
-  --mmproj mmproj-Qwen2.5-VL-7B-F16.gguf --port 8080
+# llama.cpp build with multimodal support. Models from unsloth (pre-quantized GGUF):
+#   Qwen3-VL-8B-Instruct-Q4_K_M.gguf (~4.7GB) + mmproj-F16.gguf (~1.1GB)
+huggingface-cli download unsloth/Qwen3-VL-8B-Instruct-GGUF \
+  --include "Qwen3-VL-8B-Instruct-Q4_K_M.gguf" "mmproj-F16.gguf" \
+  --local-dir <models dir>
+
+llama-server -m <models dir>/Qwen3-VL-8B-Instruct-Q4_K_M.gguf ^
+  --mmproj <models dir>/mmproj-F16.gguf --port 8080
 ```
 
 Caption renderer (separate Node server):

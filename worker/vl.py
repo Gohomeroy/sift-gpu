@@ -1,4 +1,4 @@
-"""Stage 5: Qwen2.5-VL pass — discover viral moments + watch finalists.
+"""Stage 5: Qwen3-VL pass — discover viral moments + watch finalists.
 
 Two passes:
 

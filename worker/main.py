@@ -286,7 +286,7 @@ def process_job(job: dict) -> None:
         if len(finalists) >= clip_count + discover_slots:
             break
 
-    # 11 · Qwen2.5-VL watches every finalist (both transcript-picked + discovered)
+    # 11 · Qwen3-VL watches every finalist (both transcript-picked + discovered)
     db.report_stage(job_id, "watching", 58)
     finalists = vl.watch_finalists(full_video, finalists, [], full_video, work_dir)
 
