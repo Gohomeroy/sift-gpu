@@ -16,12 +16,13 @@ import config
 # YouTube bot-walls anonymous web-client downloads; android+safari player
 # clients dodge it without cookies. Browser cookies remain as fallback.
 # A cookie file (Netscape format) beats all of them.
-# Node + EJS fetch solve YouTube's JS challenge when yt-dlp runs from PyPI
-# (pip package has no bundled scripts; node is a hard dep for Remotion anyway).
+# Deno + EJS fetch solve YouTube's JS challenge when yt-dlp runs from PyPI
+# (pip package has no bundled scripts; node 20 is below yt-dlp's 22 minimum,
+# so the pod relies on deno at /root/.deno/bin/deno).
 # Also route through a proxy when configured: YouTube flags datacenter IPs at
 # the playability gate (before tokens are checked), so egressing through
 # Cloudflare WARP (or any non-flagged IP) is what actually unblocks downloads.
-EJS_ARGS = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
+EJS_ARGS = ["--js-runtimes", "deno:/root/.deno/bin/deno", "--remote-components", "ejs:github"]
 # Throttle requests + retry to ride out YouTube's transient IP tag-of-war.
 RELAX_ARGS = ["--sleep-requests", "1.0", "--retries", "4", "--retry-sleep", "15"]
 # Prefer h264 > vp9 > av01. AV1 mp4 gets picked by `ext=mp4` format filters and

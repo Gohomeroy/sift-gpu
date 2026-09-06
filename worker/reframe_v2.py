@@ -56,6 +56,19 @@ FAST_PAN_SPEED = 24  # px/frame for >50% distance jumps
 MEDIAPIPE_STRIDE = 1
 YOLO_FALLBACK_STRIDE = 2
 
+# Scene-cut detection: compare consecutive 48x27 gray thumbs. A hard camera
+# switch produces a big mean-signed diff; smooth camera pans produce small ones.
+SCENE_CUT_DIFF = 100.0
+GRAY_W, GRAY_H = 48, 27
+
+# Minimum BlazeFace confidence and box plausibility. At 0.65 confidence the
+# detector happily fires on textured surfaces (tables, mic booms, posters),
+# so we bump it and reject anything that isn't roughly face-shaped.
+FACE_MIN_CONFIDENCE = 0.72
+FACE_MIN_WIDTH_FRAC = 0.015
+FACE_MAX_ASPECT = 2.2
+FACE_MIN_ASPECT = 0.4
+
 
 class SmoothedCameraman:
     """Heavy-tripod smoothing: safe zone, jump confirmation, scene cut snap."""
@@ -72,6 +85,14 @@ class SmoothedCameraman:
     def begin_scene(self):
         """Reset damping for scene cut — instant snap to first face."""
         self.current_x = self.target_x
+        self._pending_target = None
+        self._pending_count = 0
+
+    def snap_to(self, cx: float) -> None:
+        """Immediately center the crop at cx (fresh scene cut)."""
+        half = self.crop_w / 2
+        self.current_x = max(half, min(float(cx), self.frame_w - half))
+        self.target_x = self.current_x
         self._pending_target = None
         self._pending_count = 0
 
@@ -109,44 +130,82 @@ class SmoothedCameraman:
         return self.current_x
 
 
-def _detect_faces_mediapipe(frame):
-    """Fast face detection via MediaPipe BlazeFace."""
-    import mediapipe as mp
+class _FaceDetector:
+    """Reusable MediaPipe BlazeFace detector.
 
-    h, w = frame.shape[:2]
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    Building a FaceDetection context is slow (graph init), so the old code
+    creating one per frame was both slow and flaky. One instance per video.
+    """
 
-    with mp.solutions.face_detection.FaceDetection(
-        model_selection=0, min_detection_confidence=0.65
-    ) as fd:
-        results = fd.process(rgb)
+    def __init__(self):
+        import mediapipe as mp
 
-    if not results.detections:
-        return []
+        self._mp = mp
+        self._fd = mp.solutions.face_detection.FaceDetection(
+            model_selection=0, min_detection_confidence=FACE_MIN_CONFIDENCE
+        )
 
-    faces = []
-    for det in results.detections:
-        bb = det.location_data.relative_bounding_box
-        x = int(bb.xmin * w)
-        y = int(bb.ymin * h)
-        bw = int(bb.width * w)
-        bh = int(bb.height * h)
-        faces.append((x, y, bw, bh))
-    return faces
+    def detect(self, frame) -> list[tuple[int, int, int, int]]:
+        h, w = frame.shape[:2]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self._fd.process(rgb)
+        if not results.detections:
+            return []
+
+        faces = []
+        for det in results.detections:
+            score = float(det.score[0]) if det.score is not None else 0.0
+            if score < FACE_MIN_CONFIDENCE:
+                continue
+            bb = det.location_data.relative_bounding_box
+            bw = bb.width * w
+            bh = bb.height * h
+            # Hard plausibility gate — kills table/object false positives.
+            if bw <= 0 or bh <= 0:
+                continue
+            if bw < FACE_MIN_WIDTH_FRAC * w:
+                continue
+            aspect = bw / bh
+            if aspect > FACE_MAX_ASPECT or aspect < FACE_MIN_ASPECT:
+                continue
+            faces.append(
+                (int(bb.xmin * w), int(bb.ymin * h), int(bw), int(bh))
+            )
+        return faces
+
+
+def _scene_cut(frame, prev_small) -> bool:
+    """True if this sampled frame is a hard cut vs the previous sample."""
+    if prev_small is None:
+        return False
+    small = cv2.resize(frame, (GRAY_W, GRAY_H), interpolation=cv2.INTER_AREA)
+    diff = float(np.mean(np.abs(small.astype(np.float32) - prev_small.astype(np.float32))))
+    return diff > SCENE_CUT_DIFF
+
+
+def _downscale_gray(frame) -> np.ndarray:
+    return cv2.resize(frame, (GRAY_W, GRAY_H), interpolation=cv2.INTER_AREA)
 
 
 def _detect_person_yolo(frame, model):
-    """Fallback: YOLOv8 person detection, approximate face as top 40%."""
+    """Fallback: YOLOv8 person detection, approximate HEAD as top ~22% of
+    the body box. The old top-40% estimate put the crop on the chest/table."""
     results = model(frame, classes=[0], verbose=False)
     faces = []
+    h, w = frame.shape[:2]
     for r in results:
         for box in r.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             pw, ph = x2 - x1, y2 - y1
             if pw < 30 or ph < 50:
                 continue
-            # Approximate face as top 40% of person box
-            faces.append((x1, y1, pw, int(ph * 0.4)))
+            # Head sits at the top of the body; ~22% of height is head+neck.
+            # Keep the head width as the body width so centered faces stay put.
+            head_h = max(int(ph * 0.22), 30)
+            head_w = max(pw, head_h)
+            if head_w > 0.9 * w:  # full-frame body shot — too wide to be one face
+                continue
+            faces.append((x1, y1, head_w, head_h))
     return faces
 
 
@@ -211,10 +270,12 @@ def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray |
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(start * fps))
 
+    fd = _FaceDetector()
     yolo_model = None
     cameraman = None
     centers: list[float] = []
     prev_center: float | None = None
+    prev_small: np.ndarray | None = None
     frame_idx = 0
 
     while True:
@@ -227,16 +288,25 @@ def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray |
         if cameraman is None:
             cameraman = SmoothedCameraman(min(int(h * 9 / 16), w), w)
 
+        # Scene-cut detection: reset damping + forget the old center so the
+        # next face is picked fresh for the new shot instead of panning over
+        # the transition (which is exactly how coffee tables get "tracked").
+        is_cut = _scene_cut(frame, prev_small)
+        prev_small = _downscale_gray(frame)
+        if is_cut:
+            cameraman.begin_scene()
+            prev_center = None
+
         faces = []
 
-        # Primary: MediaPipe
+        # Primary: MediaPipe (single reusable detector, not per-frame init)
         if frame_idx % MEDIAPIPE_STRIDE == 0:
             try:
-                faces = _detect_faces_mediapipe(frame)
+                faces = fd.detect(frame)
             except Exception:
                 pass
 
-        # Fallback: YOLOv8
+        # Fallback: YOLOv8 — only when MediaPipe found nothing usable.
         if not faces and frame_idx % YOLO_FALLBACK_STRIDE == 0:
             try:
                 if yolo_model is None:
@@ -247,12 +317,23 @@ def track_crop_centers_v2(video: Path, start: float, end: float) -> np.ndarray |
                 pass
 
         if faces:
-            x, y, fw, fh = _pick_active_speaker(faces, prev_center, w)
-            cx = float(x + fw / 2)
-            cameraman.update(cx)
-            centers.append(cameraman.current_x)
-            prev_center = cx
+            picked = _pick_active_speaker(faces, prev_center, w)
+            if picked == (0, 0, 0, 0):
+                # All candidates were junk — hold instead of swinging sideways.
+                centers.append(cameraman.current_x)
+            else:
+                x, y, fw, fh = picked
+                cx = float(x + fw / 2)
+                if is_cut:
+                    # Instant snap to the new shot's speaker.
+                    cameraman.snap_to(cx)
+                else:
+                    cameraman.update(cx)
+                centers.append(cameraman.current_x)
+                prev_center = cx
         else:
+            # No face this sample — hold the last known crop center so the
+            # camera doesn't swing toward random objects mid-shot.
             centers.append(cameraman.current_x)
 
         frame_idx += 1

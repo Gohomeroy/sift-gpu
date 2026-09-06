@@ -343,3 +343,50 @@ def snap_start_to_hook(
 
     # Fall back to the covering segment itself so we never open mid-thought.
     return round(float(transcript_segments[cover_idx].get("start", start)), 2)
+
+
+def ensure_arc(
+    window: dict[str, Any],
+    transcript_segments: list[dict[str, Any]],
+    lookahead: float = 3.0,
+) -> dict[str, Any] | None:
+    """Force ANY candidate window into a complete hook → question → payoff arc.
+
+    Arc-built windows already qualify and pass through untouched. Scene and
+    VL-discovered windows usually carry no question/payoff — they are re-anchored
+    onto a hook sentence and re-run through the arc builder. Returns None when a
+    complete arc cannot be formed (the caller must DROP the pick: never clip a
+    plain segment that has no payoff to hold the viewer).
+
+    The returned dict is a fresh arc window with hook_text/payoff_text filled.
+    """
+    if float(window.get("end", 0)) <= float(window.get("start", 0)):
+        return None
+    # Already a complete arc — keep as-is.
+    if window.get("has_question") and window.get("payoff_text"):
+        return window
+    if not transcript_segments:
+        return None
+
+    snapped = snap_start_to_hook(window, transcript_segments, lookahead)
+    if snapped is None:
+        return None
+
+    # Transcript index that covers the (possibly snapped) start.
+    idx: int | None = None
+    for i, seg in enumerate(transcript_segments):
+        if float(seg.get("end", 0)) > snapped:
+            idx = i
+            break
+    if idx is None:
+        return None
+
+    arc = _build_arc(transcript_segments, idx)
+    if arc is None:
+        return None
+
+    # Preserve the window's identity + any scorer/vl metadata.
+    for k in ("score01", "base_score", "parts", "vl", "discovered_by", "confidence", "reasoning", "hook"):
+        if k in window:
+            arc[k] = window[k]
+    return arc

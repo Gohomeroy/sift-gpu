@@ -21,6 +21,7 @@ import captions as captions_mod
 import energy
 import hooks
 import ingest
+import memory
 import poster
 import reframe
 import reframe_blur
@@ -122,11 +123,42 @@ def _ffmpeg_captions(clip_path: Path, cues: list[dict], out_path: Path) -> None:
     )
 
 
+def build_merged_windows(
+    transcript: dict, scenes: list[tuple[float, float]]
+) -> list[dict]:
+    """Rebuild arc + scene-merged candidate windows (shared by fresh + cached)."""
+    windows = segment.build_windows(transcript["segments"])
+    if scenes:
+        try:
+            scene_windows = scene_detection.build_scene_windows(
+                transcript["segments"], scenes
+            )
+            seen_starts = {round(w["start"], 1) for w in windows}
+            for sw in scene_windows:
+                key = round(sw["start"], 1)
+                if key not in seen_starts:
+                    windows.append(sw)
+                    seen_starts.add(key)
+            windows.sort(key=lambda w: w["start"])
+        except Exception as exc:
+            print(f"[main] scene-window rebuild failed: {exc}", flush=True)
+    return windows
+
+
+def memory_cache_windows(cached: dict, transcript: dict) -> list[dict]:
+    """Rebuild candidate windows from a cached analysis payload."""
+    windows = build_merged_windows(transcript, cached.get("scenes", []))
+    if not windows:
+        raise RuntimeError("No speech found in the source video.")
+    return windows
+
+
 def process_job(job: dict) -> None:
     job_id = job["id"]
     org_id = job["organization_id"]
     clip_count = max(1, min(10, int(job.get("clip_count", 3))))
     work_dir = config.WORK_DIR / job_id
+    src_key = memory.source_key(job["source_url"])
 
     # Clean stale work directory from prior failed runs.
     import shutil
@@ -137,53 +169,63 @@ def process_job(job: dict) -> None:
     # 1 · Single full-video download (≤1080p) — ONE YouTube hit per job.
     #    YouTube tags datacenter IPs after a couple requests, so the old
     #    audio+analysis+sections download storm kept getting bot-walled.
-    db.report_stage(job_id, "downloading", 4)
-    full_video = ingest.download_full_video(job["source_url"], job_id)
-    db.report_stage(job_id, "downloading", 12)
+    #    CACHE HIT: if this source was already analyzed, skip the download
+    #    + transcription entirely and reuse the prior transcript/windows.
+    cached = memory.load_analysis(src_key) if config.CLIP_MEMORY_ENABLED else None
+    using_cache = cached is not None and memory.cached_video_available(src_key)
 
-    # 2 · Extract audio from the full video → wav
-    audio = ingest.extract_audio(full_video)
+    if using_cache:
+        print(f"[main] cache hit for {src_key} — reusing analysis", flush=True)
+        db.report_stage(job_id, "downloading", 12)
+        full_video = memory.video_path(src_key)
+        audio = memory.audio_path(src_key)
+        transcript = cached["transcript"]
+        scenes = cached.get("scenes", [])
+        windows = memory_cache_windows(cached, transcript)
+    else:
+        db.report_stage(job_id, "downloading", 4)
+        full_video = ingest.download_full_video(job["source_url"], job_id)
+        db.report_stage(job_id, "downloading", 12)
 
-    # 3 · Transcribe from audio alone (streams real progress — long videos
-    #     take ~4-6x realtime on CPU, so the UI must see it moving)
-    db.report_stage(job_id, "transcribing", 16)
-    _last_tx = {"t": 0.0}
+        # 2 · Extract audio from the full video → wav
+        audio = ingest.extract_audio(full_video)
 
-    def tx_progress(frac: float) -> None:
-        import time as _time
+        # 3 · Transcribe from audio alone (streams real progress — long videos
+        #     take ~4-6x realtime on CPU, so the UI must see it moving)
+        db.report_stage(job_id, "transcribing", 16)
+        _last_tx = {"t": 0.0}
 
-        now = _time.time()
-        if now - _last_tx["t"] >= 4:  # max one write per 4s
-            _last_tx["t"] = now
-            db.report_stage(job_id, "transcribing", 16 + int(frac * 14))
+        def tx_progress(frac: float) -> None:
+            import time as _time
 
-    transcript = transcribe.transcribe(str(audio), on_progress=tx_progress)
+            now = _time.time()
+            if now - _last_tx["t"] >= 4:  # max one write per 4s
+                _last_tx["t"] = now
+                db.report_stage(job_id, "transcribing", 16 + int(frac * 14))
 
-    # 4 · Candidate windows from transcript
-    db.report_stage(job_id, "segmenting", 32)
-    windows = segment.build_windows(transcript["segments"])
+        transcript = transcribe.transcribe(str(audio), on_progress=tx_progress)
+
+        # 4-5 · Candidate windows (arc + scene-merged)
+        db.report_stage(job_id, "segmenting", 32)
+        scenes: list[tuple[float, float]] = []
+        try:
+            scenes = scene_detection.detect_scenes(full_video)
+            print(f"[main] detected {len(scenes)} scenes", flush=True)
+        except Exception as exc:
+            print(f"[main] scene detection failed: {exc}", flush=True)
+        windows = build_merged_windows(transcript, scenes)
+
+        # Persist the expensive analysis for future re-submits.
+        if config.CLIP_MEMORY_ENABLED:
+            try:
+                total_dur = float(windows[-1]["end"]) if windows else 0.0
+                memory.save_analysis(src_key, transcript, scenes, total_dur)
+                memory.ensure_cached_media(src_key, full_video, audio)
+            except Exception as exc:
+                print(f"[main] analysis cache write failed: {exc}", flush=True)
+
     if not windows:
         raise RuntimeError("No speech found in the source video.")
-
-    # 5 · Scene-aware windows from PySceneDetect (merges with transcript windows).
-    scenes: list[tuple[float, float]] = []
-    try:
-        scenes = scene_detection.detect_scenes(full_video)
-        print(f"[main] detected {len(scenes)} scenes", flush=True)
-        scene_windows = scene_detection.build_scene_windows(
-            transcript["segments"], scenes
-        )
-        # Merge: keep unique windows (by start time) favoring scene windows
-        # when they align with transcript content.
-        seen_starts = {round(w["start"], 1) for w in windows}
-        for sw in scene_windows:
-            key = round(sw["start"], 1)
-            if key not in seen_starts:
-                windows.append(sw)
-                seen_starts.add(key)
-        windows.sort(key=lambda w: w["start"])
-    except Exception as exc:
-        print(f"[main] scene detection failed: {exc}", flush=True)
 
     # 6 · Cheap energy analysis over the WHOLE video (visual senses).
     total_duration = float(windows[-1]["end"])
@@ -220,27 +262,73 @@ def process_job(job: dict) -> None:
             discoveries, ranked, transcript["segments"], discover_slots
         )
 
-    # 10 · Pick the top N as finalists.
-    finalists = ranked[: clip_count + discover_slots]
+    # 9b · ARC RULE — every clip must be a complete hook → question → payoff
+    #      window. Scene-boundary and VL-discovered candidates are re-anchored
+    #      onto a real hook and rebuilt as full arcs; anything that cannot form
+    #      a complete arc is DROPPED (never clip a bare segment just to fill
+    #      a slot — it hurts retention and confuses the "why did it end?" beat).
+    db.report_stage(job_id, "segmenting", 50)
+    arc_ranked: list[dict] = []
+    for w in ranked:
+        arc = segment.ensure_arc(w, transcript["segments"])
+        if arc is not None:
+            arc_ranked.append(arc)
+
+    # 10 · Pick the top N arc-valid candidates, skipping overlaps.
+    def _overlap(a, b):
+        ov = max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"]))
+        return ov / max(a["end"] - a["start"], 0.001)
+
+    finalists: list[dict] = []
+    for w in arc_ranked:
+        if not any(_overlap(w, d) > 0.50 for d in finalists):
+            finalists.append(w)
+        if len(finalists) >= clip_count + discover_slots:
+            break
 
     # 11 · Qwen2.5-VL watches every finalist (both transcript-picked + discovered)
     db.report_stage(job_id, "watching", 58)
     finalists = vl.watch_finalists(full_video, finalists, [], full_video, work_dir)
 
     # 10 · Dedup finalists: if two windows overlap >50%, keep the higher-scored one.
-    def _overlap(a, b):
-        ov = max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"]))
-        return ov / max(a["end"] - a["start"], 0.001)
-
     deduped: list[dict] = []
     for w in finalists:
         if not any(_overlap(w, d) > 0.50 for d in deduped):
             deduped.append(w)
-    picks = deduped[:clip_count]
+    ranked_picks = deduped[: max(clip_count, 10)]
+
+    # 10c · MEMORY-AWARE PICKING: consult what this workspace already clipped
+    #       for this source, then pick fresh windows → untried style variants
+    #       → supercut combos so re-submitting the same video never repeats
+    #       and keeps producing until it runs out.
+    base_style = job.get("caption_style") or "pop"
+    base_font = job.get("caption_font") or "anton"
+    base_sub = job.get("caption_sub") or "zoom"
+    base_theme = job.get("caption_theme") or "pop"
+    base_reframe = (job.get("reframe_style") or "track").lower()
+    if config.CLIP_MEMORY_ENABLED:
+        picks = memory.pick_variations(
+            ranked_picks, clip_count, org_id, src_key,
+            base_style, base_font, base_sub, base_theme, base_reframe,
+        )
+    else:
+        picks = ranked_picks[:clip_count]
+        for w in picks:
+            w.setdefault("memory_kind", "window")
+
+    # Supercuts (combos) may have extended ends past the source — clamp.
+    for w in picks:
+        if float(w["end"]) > total_duration:
+            w["end"] = round(total_duration, 2)
+        w.setdefault("caption_style", base_style)
+        w.setdefault("caption_font", base_font)
+        w.setdefault("caption_sub", base_sub)
+        w.setdefault("caption_theme", base_theme)
+        w.setdefault("reframe_style", base_reframe)
 
     # 10b · Hook rule — every clip must open on a hook in the first 1-3s.
-    #        Arc windows already start at the hook; this snaps any leftover
-    #        candidate (VL discovery, scene windows) to a hook sentence start.
+    #        Arc windows already start at the hook; ensure_arc() already
+    #        re-anchored scene/VL candidates, so any leftover is snapped here.
     for w in picks:
         try:
             snapped = segment.snap_start_to_hook(w, transcript["segments"])
@@ -263,38 +351,38 @@ def process_job(job: dict) -> None:
     #       (5 clips took ~8min of wall time in rendering alone).
     db.report_stage(job_id, "cutting", 60)
 
-    reframe_style = (job.get("reframe_style") or "track").lower()
-    # Pick the reframe engine from the job choice:
-    #   track → face-tracking follow-cam (v2 when enabled, else v1)
-    #   blur  → widescreen fits inside 1080x1920 with enlarged blurred bg
-    if reframe_style == "blur":
-        reframe_mod = reframe_blur
-    else:
-        reframe_mod = reframe_v2 if config.REFRAME_ENGINE == "v2" else reframe
-    reframe_fn = (
-        reframe_mod.cut_and_reframe_v2
-        if hasattr(reframe_mod, "cut_and_reframe_v2")
-        else reframe_mod.cut_and_reframe
-    )
-
     def process_one(i: int, w: dict) -> None:
         stage_pct = 66 + int((i / max(total_picks, 1)) * 30)
         db.report_stage(job_id, "cutting", stage_pct)
 
-        style = job.get("caption_style") or "pop"
-        font = job.get("caption_font") or "anton"
-        sub = job.get("caption_sub") or "zoom"
-        theme = job.get("caption_theme") or "pop"
+        # Per-window style overrides (from memory variation picking).
+        style = w.get("caption_style") or job.get("caption_style") or "pop"
+        font = w.get("caption_font") or job.get("caption_font") or "anton"
+        sub = w.get("caption_sub") or job.get("caption_sub") or "zoom"
+        theme = w.get("caption_theme") or job.get("caption_theme") or "pop"
+        window_reframe = (
+            w.get("reframe_style") or job.get("reframe_style") or "track"
+        ).lower()
         raw_cut = work_dir / f"clip_{i}_raw.mp4"
 
-        reframe_fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
+        # Reframe engine follows the WINDOW choice so combos of mixed styles
+        # (track + blur cuts) each get their own framing.
+        if window_reframe == "blur":
+            mod = reframe_blur
+        elif config.REFRAME_ENGINE == "v2":
+            mod = reframe_v2
+        else:
+            mod = reframe
+        fn = mod.cut_and_reframe_v2 if hasattr(mod, "cut_and_reframe_v2") else mod.cut_and_reframe
+
+        fn(full_video, float(w["start"]), float(w["end"]), raw_cut)
 
         title = titles.make_title(w)
         cues = captions_mod.build_cues(transcript["words"], float(w["start"]), float(w["end"]))
 
         db.report_stage(job_id, "rendering", min(stage_pct + 4, 95))
         # Use the actual cut duration, not the window duration, to avoid dark padding.
-        actual_duration = reframe_mod.get_video_duration(raw_cut)
+        actual_duration = mod.get_video_duration(raw_cut)
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
         captioned = render_captions(raw_cut, cues, title, style, duration, font, sub, theme)
 
@@ -316,7 +404,7 @@ def process_job(job: dict) -> None:
             reasoning = f"{w['vl'].get('hook', '')}: {w['vl'].get('reasoning', '')}".strip(": ")
 
         path = db.upload_clip(org_id, job_id, str(final))
-        db.insert_clip(
+        clip_row = db.insert_clip(
             {
                 "job_id": job_id,
                 "organization_id": org_id,
@@ -328,7 +416,7 @@ def process_job(job: dict) -> None:
                 "caption_font": font,
                 "caption_sub": sub,
                 "caption_theme": theme,
-                "reframe_style": reframe_style,
+                "reframe_style": window_reframe,
                 "storage_path": path,
                 "caption": caption_text,
                 "hashtags": tags,
@@ -336,6 +424,30 @@ def process_job(job: dict) -> None:
                 "provider": "local",
             }
         )
+        # Remember this clip decision so the next job on the same source
+        # picks fresh windows / other styles instead of repeating it.
+        if config.CLIP_MEMORY_ENABLED:
+            try:
+                clip_id = (clip_row or {}).get("id")
+                for seg in [w] + list(w.get("extra_segments") or []):
+                    db.insert_clip_memory(
+                        {
+                            "organization_id": org_id,
+                            "source_key": src_key,
+                            "window_key": memory.window_key(
+                                float(seg["start"]), float(seg["end"])
+                            ),
+                            "kind": (
+                                "combo" if w.get("extra_segments") else w.get("memory_kind", "window")
+                            ),
+                            "style_sig": memory.style_sig(style, font, sub, theme, window_reframe),
+                            "start_seconds": seg["start"],
+                            "end_seconds": seg["end"],
+                            "clip_id": clip_id,
+                        }
+                    )
+            except Exception as exc:
+                print(f"[main] clip memory write skipped: {exc}", flush=True)
         print(f"[main] clip {i} done @ {round(duration, 1)}s", flush=True)
 
     max_workers = max(1, int(os.environ.get("CLIP_PARALLELISM", "2")))

@@ -62,6 +62,12 @@ HOOK_DURATION = float(os.environ.get("HOOK_DURATION", "4"))
 POSTING_ENABLED = os.environ.get("POSTING_ENABLED", "1") == "1"
 POST_POLL_INTERVAL = int(os.environ.get("POST_POLL_INTERVAL", "10"))
 
+# ── Clip memory / smarter pipeline ───────────────────────────────────────
+# Cache per-source analysis (download + transcribe + scenes) on disk and
+# record every clip decision in the DB so re-submits pick fresh windows →
+# untried style variants → supercut combos instead of duplicating clips.
+CLIP_MEMORY_ENABLED = os.environ.get("CLIP_MEMORY_ENABLED", "1") == "1"
+
 # TikTok
 TIKTOK_CLIENT_KEY = os.environ.get("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET", "")

@@ -99,7 +99,7 @@ def upload_clip(org_id: str, job_id: str, local_path: str) -> str:
     return path
 
 
-def insert_clip(row: dict[str, Any]) -> None:
+def insert_clip(row: dict[str, Any]) -> dict[str, Any] | None:
     payload = {
         "job_id": row["job_id"],
         "organization_id": row["organization_id"],
@@ -118,7 +118,47 @@ def insert_clip(row: dict[str, Any]) -> None:
         "reasoning": row.get("reasoning"),
         "provider": row.get("provider", "local"),
     }
-    _client().table("clips").insert(payload).execute()
+    res = _client().table("clips").insert(payload).execute()
+    return (res.data or [None])[0]
+
+
+# ── Clip memory (variation picking) ────────────────────────────────────────
+
+
+def list_clip_memory(org_id: str, source_key: str) -> list[dict[str, Any]]:
+    """All clip decisions previously made for a source in this workspace."""
+    sb = _client()
+    try:
+        return (
+            sb.table("clip_memory")
+            .select("window_key, kind, style_sig, start_seconds, end_seconds")
+            .eq("organization_id", org_id)
+            .eq("source_key", source_key)
+            .execute()
+            .data
+        )
+    except Exception as exc:
+        print(f"[memory] clip_memory lookup failed: {exc}", flush=True)
+        return []
+
+
+def insert_clip_memory(row: dict[str, Any]) -> None:
+    """Record one clip decision (window | style_variant | combo)."""
+    try:
+        _client().table("clip_memory").insert(
+            {
+                "organization_id": row["organization_id"],
+                "source_key": row["source_key"],
+                "window_key": row["window_key"],
+                "kind": row.get("kind", "window"),
+                "style_sig": row.get("style_sig", ""),
+                "start_seconds": row.get("start_seconds"),
+                "end_seconds": row.get("end_seconds"),
+                "clip_id": row.get("clip_id"),
+            }
+        ).execute()
+    except Exception as exc:
+        print(f"[memory] clip_memory insert failed: {exc}", flush=True)
 
 
 def signed_clip_url(storage_path: str, expires: int = 3600 * 24) -> str:
