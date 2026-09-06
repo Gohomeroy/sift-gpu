@@ -52,35 +52,274 @@ export const REFRAME_STYLES = [
   { id: "blur", label: "BLUR FILL", hint: "Fit widescreen · blurred same-video bg" },
 ] as const;
 
-function SelectorGrid({
+/* --------------------------- visual mockups --------------------------- */
+
+// Fit a caption split across two words: first = base/inactive, second = active.
+function CaptionMock({
+  wordOne,
+  wordTwo,
+  look,
+  font = "var(--font-anton, 'Impact')",
+  animateWordTwo,
+}: {
+  wordOne: string;
+  wordTwo: string;
+  look: { base: string; active: string; strokeW: number; strokeColor: string; size: number; weight: number; boxed?: boolean; pill?: boolean; shadow?: boolean };
+  font?: string;
+  animateWordTwo?: string;
+}) {
+  const word = (text: string, active: boolean, k: string) => {
+    const boxed = look.boxed || look.pill;
+    const bg = boxed
+      ? active
+        ? look.active
+        : look.pill
+          ? "rgba(230,230,230,0.96)"
+          : "rgba(0,0,0,0.82)"
+      : undefined;
+    const color = look.pill
+      ? "#111111"
+      : boxed
+        ? active
+          ? "#111111"
+          : "#FFFFFF"
+        : active
+          ? look.active
+          : look.base;
+    return (
+      <span
+        key={k}
+        style={{
+          fontFamily: font,
+          fontSize: look.size,
+          fontWeight: look.weight,
+          lineHeight: 1.14,
+          textTransform: "uppercase",
+          color,
+          background: bg,
+          borderRadius: look.pill ? 24 : 14,
+          padding: bg ? "2px 7px" : 0,
+          margin: "3px 0",
+          display: "inline-block",
+          WebkitTextStroke:
+            !boxed && look.strokeW > 0
+              ? `${look.strokeW}px ${look.strokeColor}`
+              : undefined,
+          paintOrder: "stroke fill",
+          textShadow: look.shadow ? "0 3px 12px rgba(0,0,0,0.55)" : undefined,
+          transform: active && !animateWordTwo ? "scale(1.15)" : undefined,
+        }}
+        className={active && animateWordTwo ? animateWordTwo : undefined}
+      >
+        {text}
+      </span>
+    );
+  };
+  // Active word animates via its own class, so drop the inline transform.
+  return (
+    <span className="flex flex-wrap items-center justify-center gap-x-1">
+      {word(wordOne, false, "w1")}
+      {word(wordTwo, true, "w2")}
+    </span>
+  );
+}
+
+function MiniStage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md border border-line/60 bg-[#0b1524]">
+      {children}
+    </div>
+  );
+}
+
+const CAP_LOOK: Record<string, { base: string; active: string; strokeW: number; strokeColor: string; size: number; weight: number; boxed?: boolean; pill?: boolean; shadow?: boolean }> = {
+  karaoke: { base: "rgba(255,255,255,0.45)", active: "#FFD700", strokeW: 5, strokeColor: "rgba(0,0,0,0.9)", size: 13, weight: 900 },
+  pill: { base: "#111111", active: "#FFD700", strokeW: 0, strokeColor: "#000000", size: 11, weight: 800, pill: true },
+  boxed: { base: "#FFFFFF", active: "#FFD700", strokeW: 0, strokeColor: "#000000", size: 12, weight: 900, boxed: true },
+  minimal: { base: "rgba(255,255,255,0.55)", active: "#FFFFFF", strokeW: 0, strokeColor: "transparent", size: 10, weight: 600, shadow: true },
+  two_tone: { base: "#FFFFFF", active: "#FFD700", strokeW: 8, strokeColor: "#000000", size: 13, weight: 900 },
+  pop: { base: "#FFFFFF", active: "#FFD700", strokeW: 9, strokeColor: "#000000", size: 14, weight: 900 },
+};
+
+function CaptionStyleMock({ id }: { id: string }) {
+  return (
+    <MiniStage>
+      <CaptionMock wordOne="SO" wordTwo="GOOD" look={CAP_LOOK[id] ?? CAP_LOOK.pop} />
+    </MiniStage>
+  );
+}
+
+const FONT_LOOK: Record<string, { family: string; weight: number }> = {
+  impact: { family: "var(--font-anton, 'Impact')", weight: 400 },
+  anton: { family: "var(--font-anton, 'Impact')", weight: 400 },
+  outfit: { family: "var(--font-outfit, 'Arial')", weight: 800 },
+  poppins: { family: "var(--font-poppins, 'Arial')", weight: 800 },
+  montserrat: { family: "var(--font-montserrat, 'Arial')", weight: 800 },
+  rajdhani: { family: "var(--font-rajdhani, 'Arial')", weight: 700 },
+};
+
+function FontMock({ id }: { id: string }) {
+  const f = FONT_LOOK[id] ?? FONT_LOOK.anton;
+  return (
+    <MiniStage>
+      <span
+        className="uppercase text-white"
+        style={{
+          fontFamily: f.family,
+          fontWeight: f.weight,
+          fontSize: 22,
+          lineHeight: 1,
+          WebkitTextStroke: "2px #000000",
+          paintOrder: "stroke fill",
+        }}
+      >
+        Ag
+      </span>
+    </MiniStage>
+  );
+}
+
+const SUB_ANIM: Record<string, string | undefined> = {
+  plain: undefined,
+  bounce: "cap-bounce",
+  fade: "cap-fade",
+  zoom: "cap-zoom",
+  wave: "cap-wave",
+  rotate: "cap-rotate",
+};
+
+function SubMock({ id }: { id: string }) {
+  return (
+    <MiniStage>
+      <CaptionMock wordOne="UP" wordTwo="NEXT" look={CAP_LOOK.pop} animateWordTwo={SUB_ANIM[id]} />
+    </MiniStage>
+  );
+}
+
+const THEME_LOOK: Record<string, { base: string; active: string; strokeW: number; strokeColor: string; bg?: string }> = {
+  pop: { base: "#FFFFFF", active: "#FFD700", strokeW: 9, strokeColor: "#000000" },
+  karaoke: { base: "rgba(255,255,255,0.45)", active: "#FFD700", strokeW: 5, strokeColor: "rgba(0,0,0,0.9)" },
+  hustle: { base: "rgba(255,255,255,0.75)", active: "#FFC107", strokeW: 7, strokeColor: "#111111" },
+  grape: { base: "#FFFFFF", active: "#C9A5FF", strokeW: 4, strokeColor: "#000000", bg: "rgba(56,18,92,0.88)" },
+  beast: { base: "#FFFFFF", active: "#B7F000", strokeW: 6, strokeColor: "#000000" },
+  poppin: { base: "#FFFFFF", active: "#FF5C8A", strokeW: 5, strokeColor: "#000000" },
+};
+
+function ThemeMock({ id }: { id: string }) {
+  const t = THEME_LOOK[id] ?? THEME_LOOK.pop;
+  return (
+    <MiniStage>
+      <CaptionMock
+        wordOne="OH"
+        wordTwo="YES"
+        look={{
+          base: t.base,
+          active: t.active,
+          strokeW: t.strokeW,
+          strokeColor: t.strokeColor,
+          size: 13,
+          weight: 900,
+          boxed: !!t.bg,
+        }}
+      />
+    </MiniStage>
+  );
+}
+
+function FrameMock({ mode }: { mode: "track" | "blur" }) {
+  if (mode === "track") {
+    // Face fills the whole 9:16 frame — no bars.
+    return (
+      <div className="relative h-20 w-full overflow-hidden rounded-md border border-line/60 bg-[#0b1524]">
+        <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-[#1d3352] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]" />
+      </div>
+    );
+  }
+  // Widescreen fill: blurred same-video bars top + bottom, sharp center strip.
+  return (
+    <div className="relative h-20 w-full overflow-hidden rounded-md border border-line/60 bg-[#0b1524]">
+      <div className="absolute inset-x-0 top-0 flex h-[22%] items-center justify-center gap-2 overflow-hidden blur-[2px]">
+        <span className="h-8 w-8 rounded-full bg-[#223a5f]/70" />
+        <span className="h-10 w-1 rounded-full bg-[#1d3352]" />
+        <span className="h-7 w-1 rounded-full bg-[#223a5f]/60" />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 flex h-[22%] items-center justify-center gap-2 overflow-hidden blur-[2px]">
+        <span className="h-8 w-8 rounded-full bg-[#223a5f]/70" />
+        <span className="h-10 w-1 rounded-full bg-[#1d3352]" />
+        <span className="h-7 w-1 rounded-full bg-[#223a5f]/60" />
+      </div>
+      <div className="absolute inset-x-0 top-1/2 h-[56%] -translate-y-1/2 border-y border-white/10 bg-[#0b1524]">
+        <div className="absolute left-1/2 top-1/2 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-[#1d3352] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]" />
+      </div>
+    </div>
+  );
+}
+
+function ChoiceCard({
   name,
-  options,
-  defaultChecked = options[0]?.id,
+  value,
+  defaultChecked,
+  preview,
+  label,
+  hint,
 }: {
   name: string;
-  options: readonly { id: string; label: string; hint: string }[];
-  defaultChecked?: string;
+  value: string;
+  defaultChecked: boolean;
+  preview: React.ReactNode;
+  label: string;
+  hint?: string;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-      {options.map((s) => (
-        <label key={s.id} className="cursor-pointer">
-          <input
-            type="radio"
-            name={name}
-            value={s.id}
-            defaultChecked={s.id === defaultChecked}
-            className="peer sr-only"
-          />
-          <span className="block rounded-md border border-line px-2 py-1.5 text-center transition-colors peer-checked:border-accent peer-checked:bg-accent/10 peer-checked:text-accent hover:border-line-strong">
-            <span className="block font-mono text-[9px] font-medium tracking-wide">
-              {s.label}
-            </span>
-            <span className="mt-0.5 block text-[8px] leading-tight text-faint">
-              {s.hint}
-            </span>
+    <label className="h-full cursor-pointer">
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        defaultChecked={defaultChecked}
+        className="peer sr-only"
+      />
+      <span className="flex h-full flex-col gap-1.5 rounded-lg border border-line bg-canvas p-1 transition-colors peer-checked:border-accent peer-checked:bg-accent/10 hover:border-line-strong">
+        {preview}
+        <span className="px-0.5 pb-0.5 text-center">
+          <span className="block font-mono text-[9px] font-medium tracking-wide text-ink">
+            {label}
           </span>
-        </label>
+          {hint && (
+            <span className="mt-0.5 block text-[8px] leading-tight text-faint">
+              {hint}
+            </span>
+          )}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function ChoiceGrid({
+  name,
+  options,
+  defaultChecked,
+  columns,
+  render,
+}: {
+  name: string;
+  options: readonly { id: string; label: string }[];
+  defaultChecked: string;
+  columns: string;
+  render: (id: string) => React.ReactNode;
+}) {
+  return (
+    <div className={`${columns} gap-2`}>
+      {options.map((s) => (
+        <ChoiceCard
+          key={s.id}
+          name={name}
+          value={s.id}
+          defaultChecked={s.id === defaultChecked}
+          preview={render(s.id)}
+          label={s.label}
+        />
       ))}
     </div>
   );
@@ -128,21 +367,36 @@ export function NewJobForm({
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Frame mode
             </legend>
-            <SelectorGrid
-              name="reframe_style"
-              options={REFRAME_STYLES}
-              defaultChecked="track"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceCard
+                name="reframe_style"
+                value="track"
+                defaultChecked
+                preview={<FrameMock mode="track" />}
+                label="TRACK FACE"
+                hint="Follow-cam, fills 9:16"
+              />
+              <ChoiceCard
+                name="reframe_style"
+                value="blur"
+                defaultChecked={false}
+                preview={<FrameMock mode="blur" />}
+                label="BLUR FILL"
+                hint="Widescreen, blurred bars"
+              />
+            </div>
           </fieldset>
 
           <fieldset>
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Caption style
             </legend>
-            <SelectorGrid
+            <ChoiceGrid
               name="caption_style"
               options={CAPTION_STYLES}
               defaultChecked="pop"
+              columns="grid grid-cols-3 sm:grid-cols-6"
+              render={(id) => <CaptionStyleMock id={id} />}
             />
           </fieldset>
 
@@ -150,10 +404,12 @@ export function NewJobForm({
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Font
             </legend>
-            <SelectorGrid
+            <ChoiceGrid
               name="caption_font"
               options={CAPTION_FONTS}
               defaultChecked="anton"
+              columns="grid grid-cols-3 sm:grid-cols-6"
+              render={(id) => <FontMock id={id} />}
             />
           </fieldset>
 
@@ -161,10 +417,12 @@ export function NewJobForm({
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Sub animation
             </legend>
-            <SelectorGrid
+            <ChoiceGrid
               name="caption_sub"
               options={CAPTION_SUBS}
               defaultChecked="zoom"
+              columns="grid grid-cols-3 sm:grid-cols-6"
+              render={(id) => <SubMock id={id} />}
             />
           </fieldset>
 
@@ -172,10 +430,12 @@ export function NewJobForm({
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
               Theme
             </legend>
-            <SelectorGrid
+            <ChoiceGrid
               name="caption_theme"
               options={CAPTION_THEMES}
               defaultChecked="pop"
+              columns="grid grid-cols-3 sm:grid-cols-6"
+              render={(id) => <ThemeMock id={id} />}
             />
           </fieldset>
 

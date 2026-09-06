@@ -727,7 +727,73 @@ select:focus {
   .sift-ed-block-c,
   .sift-ed-head,
   .sift-ed-bot,
-  .sift-bar-grow {
+  .sift-bar-grow,
+  .cap-bounce,
+  .cap-fade,
+  .cap-zoom,
+  .cap-wave,
+  .cap-rotate {
     animation: none;
   }
+}
+
+@keyframes cap-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes cap-fade {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes cap-zoom {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+}
+@keyframes cap-wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@keyframes cap-rotate {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+.cap-bounce {
+  animation: cap-bounce 0.55s ease-in-out infinite;
+}
+.cap-fade {
+  animation: cap-fade 0.7s ease-in-out infinite;
+}
+.cap-zoom {
+  animation: cap-zoom 0.5s ease-in-out infinite;
+}
+.cap-wave {
+  animation: cap-wave 0.65s ease-in-out infinite;
+}
+.cap-rotate {
+  animation: cap-rotate 0.6s ease-in-out infinite;
 }
