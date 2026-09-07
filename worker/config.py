@@ -68,6 +68,40 @@ POST_POLL_INTERVAL = int(os.environ.get("POST_POLL_INTERVAL", "10"))
 # untried style variants → supercut combos instead of duplicating clips.
 CLIP_MEMORY_ENABLED = os.environ.get("CLIP_MEMORY_ENABLED", "1") == "1"
 
+# ── Content type / streamer mode ─────────────────────────────────────────
+# "auto" (podcast behaviour) | "podcast" | "streamer". When a job is
+# streamer content the hook→question→payoff candidate generation is disabled
+# and replaced by the streamer moment funnel (cheap event detection →
+# dense Qwen3-VL multimodal analysis → multi-dimension scoring).
+STREAMER_MODE = os.environ.get("STREAMER_MODE", "0") == "1"
+
+# Cheap event detection bandwidth + sensitivity.
+STREAMER_MAX_EVENTS = int(os.environ.get("STREAMER_MAX_EVENTS", "120"))
+STREAMER_MAX_SEQUENCES = int(os.environ.get("STREAMER_MAX_SEQUENCES", "36"))
+STREAMER_MERGE_GAP = float(os.environ.get("STREAMER_MERGE_GAP", "6.0"))
+STREAMER_AUDIO_BUCKET = float(os.environ.get("STREAMER_AUDIO_BUCKET", "0.5"))
+
+# Context windows per detected event.
+STREAMER_CONTEXT_VARIANTS = int(os.environ.get("STREAMER_CONTEXT_VARIANTS", "4"))
+STREAMER_CONTEXT_PRE = float(os.environ.get("STREAMER_CONTEXT_PRE", "12.0"))
+STREAMER_CONTEXT_POST = float(os.environ.get("STREAMER_CONTEXT_POST", "16.0"))
+STREAMER_CONTEXT_SPREAD = float(os.environ.get("STREAMER_CONTEXT_SPREAD", "0.5"))
+
+# Dense multimodal sampling inside each event window.
+STREAMER_DENSE_FRAMES = int(os.environ.get("STREAMER_DENSE_FRAMES", "9"))
+STREAMER_DENSE_WIDTH = int(os.environ.get("STREAMER_DENSE_WIDTH", "512"))
+STREAMER_ANALYZE_PRE = float(os.environ.get("STREAMER_ANALYZE_PRE", "6.0"))
+STREAMER_ANALYZE_POST = float(os.environ.get("STREAMER_ANALYZE_POST", "8.0"))
+
+# Qwen3-VL two-pass budget.
+STREAMER_PASS_A_LIMIT = int(os.environ.get("STREAMER_PASS_A_LIMIT", "24"))
+STREAMER_PASS_B_LIMIT = int(os.environ.get("STREAMER_PASS_B_LIMIT", "12"))
+STREAMER_TEMPERATURE = float(os.environ.get("STREAMER_TEMPERATURE", "0.2"))
+
+# Final cut boundaries (Qwen picks; these clamp the result at render time).
+STREAMER_MIN_CLIP = float(os.environ.get("STREAMER_MIN_CLIP", "8.0"))
+STREAMER_MAX_CLIP = float(os.environ.get("STREAMER_MAX_CLIP", "90.0"))
+
 # TikTok
 TIKTOK_CLIENT_KEY = os.environ.get("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET", "")

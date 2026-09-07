@@ -29,6 +29,8 @@ import reframe_v2
 import scene_detection
 import score
 import segment
+import streamer_moment_detector as smd
+import streamer_vl as svl
 import supabase_client as db
 import titles
 import transcribe
@@ -153,6 +155,285 @@ def memory_cache_windows(cached: dict, transcript: dict) -> list[dict]:
     return windows
 
 
+def _overlap_ratio(a: dict, b: dict) -> float:
+    ov = max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"]))
+    return ov / max(a["end"] - a["start"], 0.001)
+
+
+def _default_style(job: dict) -> tuple[str, str, str, str, str]:
+    """(style, font, sub, theme, reframe) from the job or defaults."""
+    return (
+        job.get("caption_style") or "pop",
+        job.get("caption_font") or "anton",
+        job.get("caption_sub") or "zoom",
+        job.get("caption_theme") or "pop",
+        (job.get("reframe_style") or "track").lower(),
+    )
+
+
+def streamer_pipeline(
+    job: dict,
+    full_video: Path,
+    audio: Path,
+    transcript: dict,
+    scenes: list[tuple[float, float]],
+    work_dir: Path,
+    total_duration: float,
+    org_id: str,
+    src_key: str,
+    clip_count: int,
+) -> list[dict]:
+    """Streamer content path: cheap event detection → Qwen3-VL two-pass →
+    multi-dim scoring → memory-aware final selection.
+
+    Returns picks shaped exactly like podcast-path picks so the shared
+    cut/render/upload loop consumes them. Gracefully degrades to heuristic
+    candidate selection when the VLM is unavailable or rejects everything.
+    """
+    job_id = job["id"]
+    db.report_stage(job_id, "watching", 50)
+
+    segments = transcript["segments"]
+
+    # Cheap event detection → merged sequences → context-window candidates.
+    sequences = smd.detect_events(
+        audio,
+        full_video,
+        segments,
+        scenes,
+        total_duration,
+    )
+    candidates = smd.build_candidates(sequences, segments, total_duration)
+    print(
+        f"[streamer] {len(sequences)} sequences → {len(candidates)} candidates",
+        flush=True,
+    )
+
+    # Qwen3-VL two-pass deep analysis.
+    analyzed = svl.analyze_candidates(
+        candidates, full_video, work_dir, segments, total_duration
+    )
+    print(f"[streamer] {len(analyzed)} candidates analyzed by Qwen3-VL", flush=True)
+
+    # Clip memory: never repeat a window this workspace already clipped.
+    used: set[str] = set()
+    if config.CLIP_MEMORY_ENABLED:
+        try:
+            for m in db.list_clip_memory(org_id, src_key):
+                used.add(str(m.get("window_key", "")))
+        except Exception as exc:
+            print(f"[streamer] clip_memory lookup skipped: {exc}", flush=True)
+
+    picks = svl.select_finals(analyzed, clip_count, total_duration, memory_used=used)
+
+    # Fallback: no VLM / everything rejected → heuristic candidates so a job
+    # never ends with zero clips because of a model hiccup.
+    if not picks:
+        print("[streamer] no surviving analysis — falling back to event-scored candidates", flush=True)
+        ordered = sorted(
+            candidates, key=lambda c: c.get("initial_interest", 0), reverse=True
+        )
+        for cand in ordered:
+            if len(picks) >= clip_count:
+                break
+            start = round(float(cand["start"]), 2)
+            end = round(float(cand["end"]), 2)
+            if any(_overlap_ratio(cand, p) > 0.55 for p in picks):
+                continue
+            cand["start"], cand["end"] = start, end
+            cand["analysis"] = None
+            cand["_composite"] = round(float(cand.get("initial_interest", 0)) * 100, 1)
+            cand["_parts"] = {}
+            cand["_verdict"] = "possible"
+            cand.setdefault("text", smd._text_for_window(segments, start, end))
+            picks.append(cand)
+
+    style, font, sub, theme, reframe_style = _default_style(job)
+    shaped: list[dict] = []
+    for w in picks:
+        cand = dict(w)
+        start = float(cand["start"])
+        end = float(cand["end"])
+        analysis = cand.get("analysis") or {}
+        composite = cand.get("_composite", 0.0)
+        cand["start"] = round(start, 2)
+        cand["end"] = round(end, 2)
+        cand["text"] = smd._text_for_window(segments, start, end) or cand.get("text", "")
+        cand["score01"] = round(min(composite / 100.0, 1.0), 3)
+        cand["base_score"] = cand["score01"]
+        cand["parts"] = cand.get("_parts") or {}
+        cand["caption_style"] = style
+        cand["caption_font"] = font
+        cand["caption_sub"] = sub
+        cand["caption_theme"] = theme
+        cand["reframe_style"] = reframe_style
+        cand["memory_kind"] = "window"
+        # Bind Qwen verdict for title/caption/reasoning reuse downstream.
+        cand["vl"] = {
+            "hook": str(analysis.get("primary_category") or "moment"),
+            "reasoning": str(analysis.get("summary") or "")[:300],
+        }
+        cand["moment"] = {
+            "event_types": cand.get("event_types") or [],
+            "signals": cand.get("signals") or {},
+            "initial_interest": cand.get("initial_interest", 0),
+            "analysis": analysis,
+        }
+        shaped.append(cand)
+
+    # Observability (spec Part 18): persist the full candidate record so a bad
+    # selection can be explained later.
+    _dump_candidate_debug(work_dir, sequences, candidates, analyzed, shaped)
+    return shaped
+
+
+def _dump_candidate_debug(
+    work_dir: Path,
+    sequences: list[dict],
+    candidates: list[dict],
+    analyzed: list[dict],
+    picks: list[dict],
+) -> None:
+    """Write streamer_candidates.json with the full decision trail."""
+    import json
+
+    try:
+        work_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "sequences": sequences,
+            "candidates": candidates,
+            "analysis": analyzed,
+            "picks": [
+                {
+                    "start": p.get("start"),
+                    "end": p.get("end"),
+                    "event_types": p.get("moment", {}).get("event_types", []),
+                    "analysis": p.get("moment", {}).get("analysis"),
+                    "initial_interest": p.get("moment", {}).get("initial_interest", 0),
+                }
+                for p in picks
+            ],
+        }
+        (work_dir / "streamer_candidates.json").write_text(
+            json.dumps(payload, default=str, indent=1), encoding="utf-8"
+        )
+    except Exception as exc:
+        print(f"[streamer] debug dump skipped: {exc}", flush=True)
+
+
+def podcast_pipeline(
+    job: dict,
+    windows: list[dict],
+    transcript: dict,
+    full_video: Path,
+    work_dir: Path,
+    total_duration: float,
+    org_id: str,
+    src_key: str,
+    clip_count: int,
+) -> list[dict]:
+    """Legacy hook→question→payoff path: score → VL discovery → ARC rule →
+    watch finalists → memory-aware picking → hook snap. Returns picks shaped
+    exactly like streamer_pipeline's so the shared cut loop consumes both."""
+    job_id = job["id"]
+
+    # 7 · Score every window (text + visual energy + optional centroids)
+    db.report_stage(job_id, "scoring", 46)
+    ranked = score.score_windows(windows)
+
+    # 8 · VL discovery sweep — watch the WHOLE video coarsely so visually-hot
+    #     moments the transcript missed can still become clips.
+    discoveries: list[dict] = []
+    top_score = ranked[0]["score01"] if ranked else 0
+    skip_discovery = top_score >= 0.70
+    if skip_discovery:
+        print(f"[main] skipping VL discovery — top transcript score {top_score:.2f} >= 0.70", flush=True)
+    elif vl.available():
+        db.report_stage(job_id, "watching", 48)
+        try:
+            discoveries = vl.discover(full_video, total_duration, work_dir)
+            print(f"[main] VL discovered {len(discoveries)} candidate ranges", flush=True)
+        except Exception as exc:
+            print(f"[main] VL discovery failed: {exc}", flush=True)
+            discoveries = []
+
+    # 9 · Merge discoveries into the ranked pool.
+    discover_slots = max(1, min(len(discoveries), clip_count // 3))
+    if discoveries:
+        ranked = vl.merge_discoveries(
+            discoveries, ranked, transcript["segments"], discover_slots
+        )
+
+    # 9b · ARC RULE — every clip must be a complete hook → question → payoff.
+    db.report_stage(job_id, "segmenting", 50)
+    arc_ranked: list[dict] = []
+    for w in ranked:
+        arc = segment.ensure_arc(w, transcript["segments"])
+        if arc is not None:
+            arc_ranked.append(arc)
+
+    # 10 · Pick the top N arc-valid candidates, skipping overlaps.
+    finalists: list[dict] = []
+    for w in arc_ranked:
+        if not any(_overlap_ratio(w, d) > 0.50 for d in finalists):
+            finalists.append(w)
+        if len(finalists) >= clip_count + discover_slots:
+            break
+
+    # 11 · Qwen3-VL watches every finalist.
+    db.report_stage(job_id, "watching", 58)
+    finalists = vl.watch_finalists(full_video, finalists, [], full_video, work_dir)
+
+    # 10 · Dedup finalists.
+    deduped: list[dict] = []
+    for w in finalists:
+        if not any(_overlap_ratio(w, d) > 0.50 for d in deduped):
+            deduped.append(w)
+    ranked_picks = deduped[: max(clip_count, 10)]
+
+    # 10c · MEMORY-AWARE PICKING.
+    base_style = job.get("caption_style") or "pop"
+    base_font = job.get("caption_font") or "anton"
+    base_sub = job.get("caption_sub") or "zoom"
+    base_theme = job.get("caption_theme") or "pop"
+    base_reframe = (job.get("reframe_style") or "track").lower()
+    if config.CLIP_MEMORY_ENABLED:
+        picks = memory.pick_variations(
+            ranked_picks, clip_count, org_id, src_key,
+            base_style, base_font, base_sub, base_theme, base_reframe,
+        )
+    else:
+        picks = ranked_picks[:clip_count]
+        for w in picks:
+            w.setdefault("memory_kind", "window")
+
+    # Supercuts (combos) may have extended ends past the source — clamp.
+    for w in picks:
+        if float(w["end"]) > total_duration:
+            w["end"] = round(total_duration, 2)
+        w.setdefault("caption_style", base_style)
+        w.setdefault("caption_font", base_font)
+        w.setdefault("caption_sub", base_sub)
+        w.setdefault("caption_theme", base_theme)
+        w.setdefault("reframe_style", base_reframe)
+
+    # 10b · Hook rule — every clip must open on a hook in the first 1-3s.
+    for w in picks:
+        try:
+            snapped = segment.snap_start_to_hook(w, transcript["segments"])
+            if snapped is not None and abs(snapped - float(w["start"])) > 0.01:
+                w["start"] = snapped
+                w["text"] = " ".join(
+                    seg["text"]
+                    for seg in transcript["segments"]
+                    if float(seg["start"]) >= snapped
+                    and float(seg["end"]) <= float(w["end"])
+                ).strip()
+        except Exception as exc:
+            print(f"[main] hook snap skipped for {w.get('start')}: {exc}", flush=True)
+    return picks
+
+
 def process_job(job: dict) -> None:
     job_id = job["id"]
     org_id = job["organization_id"]
@@ -232,116 +513,19 @@ def process_job(job: dict) -> None:
     db.report_stage(job_id, "analyzing", 38)
     energy.analyze(windows, audio, full_video, total_duration)
 
-    # 7 · Score every window (text + visual energy + optional centroids)
-    db.report_stage(job_id, "scoring", 46)
-    ranked = score.score_windows(windows)
-
-    # 8 · VL discovery sweep — watch the WHOLE video coarsely so visually-hot
-    #     moments the transcript missed can still become clips.
-    #     Skip if transcript already found strong candidates (score > 0.70)
-    #     to save ~2-3 min of VL inference.
-    discoveries: list[dict] = []
-    top_score = ranked[0]["score01"] if ranked else 0
-    skip_discovery = top_score >= 0.70
-    if skip_discovery:
-        print(f"[main] skipping VL discovery — top transcript score {top_score:.2f} >= 0.70", flush=True)
-    elif vl.available():
-        db.report_stage(job_id, "watching", 48)
-        try:
-            discoveries = vl.discover(full_video, total_duration, work_dir)
-            print(f"[main] VL discovered {len(discoveries)} candidate ranges", flush=True)
-        except Exception as exc:
-            print(f"[main] VL discovery failed: {exc}", flush=True)
-            discoveries = []
-
-    # 9 · Merge discoveries into the ranked pool.
-    #     Reserve 30% of clip_count slots for VL discoveries (at least 1).
-    discover_slots = max(1, min(len(discoveries), clip_count // 3))
-    if discoveries:
-        ranked = vl.merge_discoveries(
-            discoveries, ranked, transcript["segments"], discover_slots
-        )
-
-    # 9b · ARC RULE — every clip must be a complete hook → question → payoff
-    #      window. Scene-boundary and VL-discovered candidates are re-anchored
-    #      onto a real hook and rebuilt as full arcs; anything that cannot form
-    #      a complete arc is DROPPED (never clip a bare segment just to fill
-    #      a slot — it hurts retention and confuses the "why did it end?" beat).
-    db.report_stage(job_id, "segmenting", 50)
-    arc_ranked: list[dict] = []
-    for w in ranked:
-        arc = segment.ensure_arc(w, transcript["segments"])
-        if arc is not None:
-            arc_ranked.append(arc)
-
-    # 10 · Pick the top N arc-valid candidates, skipping overlaps.
-    def _overlap(a, b):
-        ov = max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"]))
-        return ov / max(a["end"] - a["start"], 0.001)
-
-    finalists: list[dict] = []
-    for w in arc_ranked:
-        if not any(_overlap(w, d) > 0.50 for d in finalists):
-            finalists.append(w)
-        if len(finalists) >= clip_count + discover_slots:
-            break
-
-    # 11 · Qwen3-VL watches every finalist (both transcript-picked + discovered)
-    db.report_stage(job_id, "watching", 58)
-    finalists = vl.watch_finalists(full_video, finalists, [], full_video, work_dir)
-
-    # 10 · Dedup finalists: if two windows overlap >50%, keep the higher-scored one.
-    deduped: list[dict] = []
-    for w in finalists:
-        if not any(_overlap(w, d) > 0.50 for d in deduped):
-            deduped.append(w)
-    ranked_picks = deduped[: max(clip_count, 10)]
-
-    # 10c · MEMORY-AWARE PICKING: consult what this workspace already clipped
-    #       for this source, then pick fresh windows → untried style variants
-    #       → supercut combos so re-submitting the same video never repeats
-    #       and keeps producing until it runs out.
-    base_style = job.get("caption_style") or "pop"
-    base_font = job.get("caption_font") or "anton"
-    base_sub = job.get("caption_sub") or "zoom"
-    base_theme = job.get("caption_theme") or "pop"
-    base_reframe = (job.get("reframe_style") or "track").lower()
-    if config.CLIP_MEMORY_ENABLED:
-        picks = memory.pick_variations(
-            ranked_picks, clip_count, org_id, src_key,
-            base_style, base_font, base_sub, base_theme, base_reframe,
+    # Branch on content type — streamer = event-driven Qwen3-VL moments,
+    # anything else keeps the legacy hook→question→payoff arc pipeline.
+    content_type = (job.get("content_type") or "auto").lower()
+    if config.STREAMER_MODE or content_type == "streamer":
+        picks = streamer_pipeline(
+            job, full_video, audio, transcript, scenes, work_dir,
+            total_duration, org_id, src_key, clip_count,
         )
     else:
-        picks = ranked_picks[:clip_count]
-        for w in picks:
-            w.setdefault("memory_kind", "window")
-
-    # Supercuts (combos) may have extended ends past the source — clamp.
-    for w in picks:
-        if float(w["end"]) > total_duration:
-            w["end"] = round(total_duration, 2)
-        w.setdefault("caption_style", base_style)
-        w.setdefault("caption_font", base_font)
-        w.setdefault("caption_sub", base_sub)
-        w.setdefault("caption_theme", base_theme)
-        w.setdefault("reframe_style", base_reframe)
-
-    # 10b · Hook rule — every clip must open on a hook in the first 1-3s.
-    #        Arc windows already start at the hook; ensure_arc() already
-    #        re-anchored scene/VL candidates, so any leftover is snapped here.
-    for w in picks:
-        try:
-            snapped = segment.snap_start_to_hook(w, transcript["segments"])
-            if snapped is not None and abs(snapped - float(w["start"])) > 0.01:
-                w["start"] = snapped
-                w["text"] = " ".join(
-                    seg["text"]
-                    for seg in transcript["segments"]
-                    if float(seg["start"]) >= snapped
-                    and float(seg["end"]) <= float(w["end"])
-                ).strip()
-        except Exception as exc:
-            print(f"[main] hook snap skipped for {w.get('start')}: {exc}", flush=True)
+        picks = podcast_pipeline(
+            job, windows, transcript, full_video, work_dir,
+            total_duration, org_id, src_key, clip_count,
+        )
     total_picks = len(picks)
 
     # 13 · Cut each final pick straight from the local full video.
@@ -402,6 +586,15 @@ def process_job(job: dict) -> None:
         reasoning = None
         if w.get("vl"):
             reasoning = f"{w['vl'].get('hook', '')}: {w['vl'].get('reasoning', '')}".strip(": ")
+        rec = (w.get("moment") or {}).get("analysis")
+        if rec:
+            try:
+                import json as _json
+                reasoning = ((reasoning + " | ") if reasoning else "") + _json.dumps(
+                    rec, default=str
+                )[:1500]
+            except Exception:
+                pass
 
         path = db.upload_clip(org_id, job_id, str(final))
         clip_row = db.insert_clip(
