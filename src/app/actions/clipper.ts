@@ -17,6 +17,10 @@ export async function createClipJobAction(
   const captionSub = String(formData.get("caption_sub") ?? "zoom");
   const captionTheme = String(formData.get("caption_theme") ?? "pop");
   const reframeStyle = String(formData.get("reframe_style") ?? "track");
+  const contentTypes = new Set(["auto", "podcast", "streamer"]);
+  const contentType = contentTypes.has(String(formData.get("content_type")))
+    ? String(formData.get("content_type"))
+    : "auto";
   const clipCount = Math.max(1, Math.min(10, Number(formData.get("clip_count")) || 3));
 
   if (!sourceUrl.startsWith("http")) {
@@ -35,6 +39,7 @@ export async function createClipJobAction(
     p_caption_sub: captionSub,
     p_caption_theme: captionTheme,
     p_reframe_style: reframeStyle,
+    p_content_type: contentType,
     p_clip_count: clipCount,
   });
 

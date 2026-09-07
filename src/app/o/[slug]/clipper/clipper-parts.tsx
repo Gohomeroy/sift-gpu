@@ -226,6 +226,61 @@ function ThemeMock({ id }: { id: string }) {
   );
 }
 
+const CONTENT_TYPES: { id: string; label: string; hint: string }[] = [
+  { id: "auto", label: "AUTO", hint: "Let the AI decide" },
+  { id: "podcast", label: "PODCAST", hint: "Arc-based, hook→payoff" },
+  { id: "streamer", label: "STREAMER", hint: "Events & reactions" },
+];
+
+function ContentTypeMock({ id }: { id: string }) {
+  if (id === "podcast") {
+    // Two talking heads + waveform — the arc pipeline.
+    return (
+      <MiniStage>
+        <div className="flex w-full items-center justify-around px-3">
+          <span className="h-7 w-7 rounded-full bg-[#1d3352] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]" />
+          <span className="flex h-5 items-end gap-0.5">
+            {[4, 7, 5, 9, 6, 8, 4].map((h, i) => (
+              <span key={i} className="w-[2px] rounded-sm bg-accent/70" style={{ height: `${h * 2}px` }} />
+            ))}
+          </span>
+          <span className="h-7 w-7 rounded-full bg-[#1d3352] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]" />
+        </div>
+      </MiniStage>
+    );
+  }
+  if (id === "streamer") {
+    // Reaction face + chat bubbles — the event pipeline.
+    return (
+      <MiniStage>
+        <div className="flex w-full items-center justify-between px-3">
+          <div className="flex h-5 w-12 flex-col justify-center gap-0.5">
+            <span className="h-1.5 w-9 rounded-sm bg-[#223a5f]" />
+            <span className="h-1.5 w-7 rounded-sm bg-[#1d3352]" />
+          </div>
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 text-[10px] leading-none">
+            😂
+          </span>
+        </div>
+      </MiniStage>
+    );
+  }
+  // auto: a question mark melting into the two paths — the AI decides.
+  return (
+    <MiniStage>
+      <div className="relative flex items-center">
+        <span className="font-mono text-sm font-black text-accent">?</span>
+        <span className="ml-1.5 h-px w-5 bg-accent/40" />
+        <span className="flex items-end gap-0.5">
+          <span className="h-[9px] w-[2px] rounded-sm bg-faint/60" />
+          <span className="h-[13px] w-[2px] rounded-sm bg-faint/60" />
+          <span className="h-[7px] w-[2px] rounded-sm bg-faint/60" />
+        </span>
+      </div>
+    </MiniStage>
+  );
+}
+
 function FrameMock({ mode }: { mode: "track" | "blur" }) {
   if (mode === "track") {
     // Face fills the whole 9:16 frame — no bars.
@@ -362,6 +417,25 @@ export function NewJobForm({
               <Input id="j-title" name="title" required minLength={3} maxLength={120} placeholder="Podcast ep. 42" />
             </Field>
           </div>
+
+          <fieldset>
+            <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">
+              Content type
+            </legend>
+            <div className="grid grid-cols-3 gap-2">
+              {CONTENT_TYPES.map((c, i) => (
+                <ChoiceCard
+                  key={c.id}
+                  name="content_type"
+                  value={c.id}
+                  defaultChecked={i === 0}
+                  preview={<ContentTypeMock id={c.id} />}
+                  label={c.label}
+                  hint={c.hint}
+                />
+              ))}
+            </div>
+          </fieldset>
 
           <fieldset>
             <legend className="mb-2 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">

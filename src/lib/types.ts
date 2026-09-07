@@ -192,6 +192,7 @@ export type ClipJob = {
   caption_sub: string | null;
   caption_theme: string | null;
   reframe_style: string | null;
+  content_type: string | null;
   clip_count: number;
   error: string | null;
   created_at: string;

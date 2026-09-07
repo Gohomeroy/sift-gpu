@@ -136,6 +136,11 @@ export default async function ClipperPage({
                         {job.reframe_style === "blur" ? "blur fill" : "track"}
                       </Chip>
                     )}
+                    {job.content_type && job.content_type !== "auto" && (
+                      <Chip tone="neutral">
+                        {job.content_type === "streamer" ? "streamer" : "podcast"}
+                      </Chip>
+                    )}
                     <span className="ml-auto">
                       {(job.created_by === member.user_id ||
                         org.owner_id === member.user_id) && (
