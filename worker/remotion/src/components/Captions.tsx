@@ -204,9 +204,25 @@ export const Captions: React.FC<{
   font?: string;
   sub?: string;
   theme?: string;
-}> = ({ cues, style, font = "anton", sub = "zoom", theme = "pop" }) => {
+  reframeStyle?: string;
+  captionLayout?: string;
+}> = ({
+  cues,
+  style,
+  font = "anton",
+  sub = "zoom",
+  theme = "pop",
+  reframeStyle = "track",
+  captionLayout = "center",
+}) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
+  // Blur reframes keep captions out of the sharp center strip: they sit in
+  // the blurred band right below the unblurred footage and are scaled down so
+  // they read as a lower-third instead of covering the video. Portrait blur
+  // is full-bleed (no band), so main.py passes "center" for those.
+  const belowFeed = captionLayout === "below_feed";
+  const fontScale = belowFeed ? 0.72 : 1;
   const spec = CAPTION_STYLES[
     (style as CaptionStyleName) in CAPTION_STYLES
       ? (style as CaptionStyleName)
@@ -232,11 +248,22 @@ export const Captions: React.FC<{
 
   return (
     <AbsoluteFill
-      style={{
-        justifyContent: "center",
-        alignItems: "center",
-        paddingBottom: height * 0.06,
-      }}
+      style={
+        belowFeed
+          ? {
+              // Blur layout: a lower-third pinned just under the 16:9
+              // foreground (which ends at 65.8% of 1920 height), centered.
+              justifyContent: "flex-start",
+              alignItems: "center",
+              paddingTop: height * 0.665,
+              paddingBottom: height * 0.03,
+            }
+          : {
+              justifyContent: "center",
+              alignItems: "center",
+              paddingBottom: height * 0.06,
+            }
+      }
     >
       <div
         style={{
@@ -245,7 +272,7 @@ export const Captions: React.FC<{
           justifyContent: "center",
           gap: `0 ${spec.boxedActive ? 10 : 4}px`,
           padding: "0 90px",
-          maxWidth: width * 0.86,
+          maxWidth: belowFeed ? width * 0.9 : width * 0.86,
         }}
       >
         {(onScreen.length ? onScreen : []).flatMap((cue) =>
@@ -324,7 +351,7 @@ export const Captions: React.FC<{
                 key={`${cue.start}-${wi}`}
                 style={{
                   fontFamily: fontFamilyFor(font),
-                  fontSize: spec.fontSize,
+                  fontSize: spec.fontSize * fontScale,
                   fontWeight:
                     isPill ? 800 : isMinimal ? 600 : 900,
                   lineHeight: 1.14,

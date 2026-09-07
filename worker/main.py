@@ -46,6 +46,8 @@ def render_captions(
     font: str = "anton",
     sub: str = "zoom",
     theme: str = "pop",
+    reframe_style: str = "track",
+    caption_layout: str = "center",
 ) -> Path:
     """Ask the Remotion render server to burn captions; falls back to ffmpeg drawtext, then raw cut."""
     import json
@@ -63,6 +65,8 @@ def render_captions(
                 "captionFont": font,
                 "captionSub": sub,
                 "captionTheme": theme,
+                "reframeStyle": reframe_style,
+                "captionLayout": caption_layout,
                 "durationSeconds": duration,
                 "outName": f"{clip_path.parent.name}_{clip_path.stem}",
             },
@@ -204,6 +208,22 @@ def streamer_pipeline(
         total_duration,
     )
     candidates = smd.build_candidates(sequences, segments, total_duration)
+    # Editor-validated windows for this exact source are forced back into the
+    # pool so re-runs re-score them against the calibrated bar (golden_moments).
+    if config.CLIP_MEMORY_ENABLED:
+        try:
+            import golden_moments
+
+            goldens = golden_moments.candidate_overrides(src_key, segments, total_duration)
+            if goldens:
+                candidates = goldens + candidates
+                print(
+                    f"[streamer] +{len(goldens)} golden-reference candidates "
+                    f"({[g.get('golden_name') for g in goldens]})",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[streamer] golden overrides skipped: {exc}", flush=True)
     print(
         f"[streamer] {len(sequences)} sequences → {len(candidates)} candidates",
         flush=True,
@@ -568,7 +588,32 @@ def process_job(job: dict) -> None:
         # Use the actual cut duration, not the window duration, to avoid dark padding.
         actual_duration = mod.get_video_duration(raw_cut)
         duration = actual_duration if actual_duration > 0 else float(w["end"]) - float(w["start"])
-        captioned = render_captions(raw_cut, cues, title, style, duration, font, sub, theme)
+        # Blur-mode landscape cuts center a 16:9 foreground on a 1080x1920
+        # canvas; captions sit smaller, in the blurred band right below the
+        # footage. Portrait sources are full-bleed so they keep the centered layout.
+        caption_layout = "center"
+        if window_reframe == "blur":
+            is_portrait = False
+            try:
+                import cv2
+
+                cap = cv2.VideoCapture(str(full_video))
+                fw = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                fh = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                cap.release()
+                if fw and fh:
+                    is_portrait = fh >= fw * 16.0 / 9.0 - 1  # ≈9:16 or taller
+            except Exception:
+                pass
+            # Landscape sources get blurred bands top/bottom → captions live in
+            # the bottom band right below the footage. Portrait = full-bleed,
+            # keep the centered layout.
+            if not is_portrait:
+                caption_layout = "below_feed"
+        captioned = render_captions(
+            raw_cut, cues, title, style, duration,
+            font, sub, theme, window_reframe, caption_layout,
+        )
 
         if config.HOOKS_ENABLED:
             # Hook text overlay — punchy headline burned onto the clip.

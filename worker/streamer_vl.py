@@ -32,6 +32,7 @@ from typing import Any
 import requests
 
 import config
+import golden_moments
 import memory
 import vl as vl_core
 
@@ -45,6 +46,7 @@ def _pass_a_prompt(n: int) -> str:
         "Understand what actually happens (words + visuals + reactions matter). "
         "Decide whether this moment could work as a standalone short for a viewer "
         "who never saw the stream.\n\n"
+        f"{golden_moments.calibration_block()}\n\n"
         "Return ONLY minified JSON: "
         '{"verdict": "reject"|"possible"|"strong", '
         '"category": "funny"|"shocking"|"controversial"|"unexpected"|"rage"|'
@@ -62,6 +64,11 @@ PASS_B_PROMPT = (
     "Understand what actually happens: the conversation, the visual events, "
     "facial expressions, gameplay, the setup before, the reaction during, "
     "the outcome after. Frames are labeled with timestamps.\n\n"
+    "Score against this bar. Koan-like dead-air, generic 'hello how are you' "
+    "banter, partying scenery, or technically-coherent-but-nothing-happens "
+    "conversations must score boringness HIGH and final_verdict reject:\n\n"
+    + golden_moments.calibration_block()
+    + "\n\n"
     "Return ONLY valid minified JSON with EXACTLY these keys:\n"
     '{"summary": "<what happened>",\n'
     ' "primary_category": "funny"|"shocking"|"controversial"|"unexpected"|'

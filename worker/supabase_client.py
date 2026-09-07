@@ -7,7 +7,11 @@ insert clips. Treat it as a secret; never expose it to the app frontend.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -87,16 +91,66 @@ def complete_job(job_id: str) -> None:
 
 
 def upload_clip(org_id: str, job_id: str, local_path: str) -> str:
-    """Upload a rendered mp4 to the private clips bucket; returns storage path."""
+    """Upload a rendered mp4 to the private clips bucket; returns storage path.
+
+    Supabase enforces a project-wide max object size (default 50MB). Long
+    windows (90s @ high bitrate) blow past it, so oversized files are
+    re-encoded with a capped bitrate before uploading.
+    """
     sb = _client()
-    path = f"{org_id}/{job_id}/{local_path.split('/')[-1].split(chr(92))[-1]}"
-    with open(local_path, "rb") as fh:
-        sb.storage.from_("clips").upload(
-            path,
-            fh.read(),
-            {"content-type": "video/mp4", "upsert": "true"},
-        )
+    src = Path(local_path)
+    blob = src.read_bytes()
+    limit = int(os.environ.get("SUPABASE_MAX_OBJECT_BYTES", "50") or "50") * 1024 * 1024
+    if len(blob) > limit and src.suffix.lower() == ".mp4":
+        try:
+            blob = _shrink_mp4(src)
+        except Exception:
+            pass  # give the original a shot; it may still fit after retries
+
+    path = f"{org_id}/{job_id}/{src.name}"
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp.write(blob)
+            tmp_path = tmp.name
+        with open(tmp_path, "rb") as fh:
+            sb.storage.from_("clips").upload(
+                path,
+                fh.read(),
+                {"content-type": "video/mp4", "upsert": "true"},
+            )
+    finally:
+        if "tmp_path" in locals():
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
     return path
+
+
+def _shrink_mp4(src: Path) -> bytes:
+    """Re-encode an mp4 to a ~40MB-ish CRF-28 H.264 file (audio passthrough)."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        out = tmp.name
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(src),
+                "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264",
+                "-preset", "veryfast", "-crf", "28", "-maxrate", "4M",
+                "-bufsize", "8M", "-c:a", "aac", "-b:a", "128k",
+                str(out),
+            ],
+            capture_output=True,
+            timeout=60 * 10,
+            check=True,
+        )
+        data = Path(out).read_bytes()
+        return data
+    finally:
+        try:
+            os.unlink(out)
+        except Exception:
+            pass
 
 
 def insert_clip(row: dict[str, Any]) -> dict[str, Any] | None:

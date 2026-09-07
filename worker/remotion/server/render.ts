@@ -31,6 +31,8 @@ export async function renderClip(opts: {
   captionFont?: string;
   captionSub?: string;
   captionTheme?: string;
+  reframeStyle?: string;
+  captionLayout?: string;
   durationSeconds: number;
   outName: string;
   outDir: string;
@@ -46,6 +48,8 @@ export async function renderClip(opts: {
     captionFont: opts.captionFont,
     captionSub: opts.captionSub,
     captionTheme: opts.captionTheme,
+    reframeStyle: opts.reframeStyle,
+    captionLayout: opts.captionLayout,
     durationSeconds: opts.durationSeconds,
   };
 

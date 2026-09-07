@@ -500,15 +500,156 @@ def build_candidates(
     total_duration: float,
     max_cands: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Turn ranked event sequences into clip-window candidates for Qwen3-VL."""
+    """Turn ranked event sequences into clip-window candidates for Qwen3-VL.
+
+    Guarantees WHOLE-STREAM temporal coverage. Without spreading, saturated
+    initial_interest (many sequences pinned at 1.0) degenerates to
+    chronological order — the first few minutes of audio spikes eat the entire
+    budget and later golden windows starve (the original front-of-stream bug
+    on 53-min streams). Strategy:
+
+      1. window variants per sequence (setup/aftermath mixes)
+      2. round-robin across temporal bands → every region represented
+      3. evenly-spaced scan windows → quiet stretches still get judged
+      4. remaining slots filled by pure interest order
+    """
+
+    def _key(w: dict[str, Any]) -> tuple[float, float]:
+        return (round(float(w["start"]), 1), round(float(w["end"]), 1))
+
     caps = max_cands or config.STREAMER_PASS_A_LIMIT
-    candidates: list[dict[str, Any]] = []
+    if caps <= 0 or total_duration <= 0:
+        return []
+
+    # Reserve a share of the budget for coverage scans so the dead-zone pass
+    # (below) can actually insert candidates instead of being starved by the
+    # band round-robin.
+    rr_budget = max(4, caps * 2 // 3)
+
+    # 1) Expand every sequence into its bounded window variants.
+    expanded: list[dict[str, Any]] = []
     for seq in sequences:
-        if len(candidates) >= caps:
-            break
         ws = context_windows(seq, segments, total_duration)
-        for w in ws[: config.STREAMER_CONTEXT_VARIANTS]:
-            candidates.append(w)
-            if len(candidates) >= caps:
+        if not ws:
+            continue
+        expanded.extend(ws[: max(1, config.STREAMER_CONTEXT_VARIANTS)])
+    expanded.sort(key=lambda w: w["initial_interest"], reverse=True)
+
+    seen: set[tuple[float, float]] = set()
+    for w in expanded:
+        seen.add(_key(w))
+    picks: list[dict[str, Any]] = []
+
+    # 2) Round-robin across temporal bands — ~1 band per 240s, min 4.
+    n_bands = max(4, min(rr_budget, int(total_duration / 240.0) + 1))
+    bands: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for w in expanded:
+        b = min(n_bands - 1, int(w["peak"] / max(total_duration, 1e-9) * n_bands))
+        bands[b].append(w)
+
+    band_ids = sorted(bands)
+    while len(picks) < rr_budget and band_ids:
+        progressed = False
+        for b in band_ids:
+            if len(picks) >= rr_budget:
                 break
-    return candidates
+            bucket = bands[b]
+            if not bucket:
+                continue
+            picks.append(bucket[0])
+            bucket.pop(0)
+            progressed = True
+        if not progressed:
+            break
+
+    # 2b) Dead-zone scan: any uncovered time band wider than a threshold gets
+    #     a transcript-anchored midpoint candidate, so no 4-minute stretch of
+    #     the stream goes unjudged. Measures actual window coverage (an event
+    #     peak inside a band does NOT mean the band is covered).
+    def _gaps_over_threshold(threshold: float) -> list[tuple[float, float]]:
+        spans = sorted((float(w["start"]), float(w["end"])) for w in picks)
+        merged: list[tuple[float, float]] = []
+        for s, e in spans:
+            if merged and s <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        gaps: list[tuple[float, float]] = []
+        cursor = 0.0
+        for s, e in merged:
+            if s - cursor >= threshold:
+                gaps.append((cursor, s))
+            cursor = max(cursor, e)
+        if total_duration - cursor >= threshold:
+            gaps.append((cursor, total_duration))
+        return [(a, b) for a, b in gaps if b - a >= config.STREAMER_MIN_CLIP]
+
+    gap_thresh = max(config.STREAMER_MERGE_GAP * 3, min(90.0, total_duration / max(caps * 2, 1)))
+    for gs, ge in _gaps_over_threshold(gap_thresh):
+        if len(picks) >= caps:
+            break
+        mid = (gs + ge) / 2.0
+        start = round(max(0.0, mid - config.STREAMER_CONTEXT_PRE), 2)
+        end = round(min(total_duration, mid + config.STREAMER_CONTEXT_POST), 2)
+        key = (round(start, 1), round(end, 1))
+        if key in seen or end - start < config.STREAMER_MIN_CLIP:
+            continue
+        text = _text_for_window(segments, start, end)
+        if not text:
+            continue
+        seen.add(key)
+        picks.append(
+            {
+                "start": start,
+                "end": end,
+                "peak": round(mid, 2),
+                "event_types": ["coverage_scan"],
+                "signals": {},
+                "initial_interest": 0.30,
+                "text": text,
+            }
+        )
+
+    # 3) Even scan — guarantee every ~4 min span gets at least one candidate
+    #    even where no detector event fired (quiet but funny banter).
+    if len(picks) < caps:
+        step = max(
+            config.STREAMER_MIN_CLIP + 8.0,
+            (total_duration - config.STREAMER_ANALYZE_PRE - config.STREAMER_ANALYZE_POST)
+            / max(caps, 1),
+        )
+        t = step
+        while t < total_duration - config.STREAMER_MIN_CLIP and len(picks) < caps:
+            start = round(max(0.0, t - config.STREAMER_CONTEXT_PRE), 2)
+            end = round(min(total_duration, t + config.STREAMER_CONTEXT_POST), 2)
+            key = (round(start, 1), round(end, 1))
+            if key not in seen and end - start >= config.STREAMER_MIN_CLIP:
+                text = _text_for_window(segments, start, end)
+                if not text:
+                    t += step
+                    continue
+                seen.add(key)
+                picks.append(
+                    {
+                        "start": start,
+                        "end": end,
+                        "peak": round(t, 2),
+                        "event_types": ["coverage_scan"],
+                        "signals": {},
+                        "initial_interest": 0.30,
+                        "text": text,
+                    }
+                )
+            t += step
+
+    # 4) Fill any remaining budget by interest order.
+    for w in expanded:
+        if len(picks) >= caps:
+            break
+        key = _key(w)
+        if key in seen:
+            continue
+        seen.add(key)
+        picks.append(w)
+
+    return picks[:caps]

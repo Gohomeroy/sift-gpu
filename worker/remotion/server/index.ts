@@ -39,6 +39,8 @@ app.post("/render", async (req, res) => {
     captionFont,
     captionSub,
     captionTheme,
+    reframeStyle = "track",
+    captionLayout = "center",
     durationSeconds,
     outName,
   } = req.body ?? {};
@@ -67,6 +69,8 @@ app.post("/render", async (req, res) => {
       captionFont: String(captionFont || "anton"),
       captionSub: String(captionSub || "zoom"),
       captionTheme: String(captionTheme || "pop"),
+      reframeStyle: String(reframeStyle || "track"),
+      captionLayout: String(captionLayout || "center"),
       durationSeconds: Number(durationSeconds),
       outName: String(outName).replace(/[^a-zA-Z0-9_-]/g, "_"),
       outDir: RENDER_OUT_DIR,

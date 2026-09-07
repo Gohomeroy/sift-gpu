@@ -18,6 +18,8 @@ export type ShortFormProps = {
   captionFont?: string;
   captionSub?: string;
   captionTheme?: string;
+  reframeStyle?: string;
+  captionLayout?: string;
   durationSeconds: number;
 };
 
@@ -29,6 +31,8 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
   captionFont,
   captionSub,
   captionTheme,
+  reframeStyle,
+  captionLayout,
   durationSeconds,
 }) => {
   const { width, height, fps } = useVideoConfig();
@@ -53,6 +57,8 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
           font={captionFont}
           sub={captionSub}
           theme={captionTheme}
+          reframeStyle={reframeStyle}
+          captionLayout={captionLayout}
         />
         <ViralTitle title={title} />
         <ProgressBar durationSeconds={durationSeconds} />
