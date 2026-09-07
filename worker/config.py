@@ -80,6 +80,9 @@ STREAMER_MAX_EVENTS = int(os.environ.get("STREAMER_MAX_EVENTS", "120"))
 STREAMER_MAX_SEQUENCES = int(os.environ.get("STREAMER_MAX_SEQUENCES", "36"))
 STREAMER_MERGE_GAP = float(os.environ.get("STREAMER_MERGE_GAP", "6.0"))
 STREAMER_AUDIO_BUCKET = float(os.environ.get("STREAMER_AUDIO_BUCKET", "0.5"))
+# Above this merged span a sequence is re-split at its largest internal gaps,
+# so dense camera-cut events can't glue an entire stream into one cluster.
+STREAMER_MAX_SEQ_SPAN = float(os.environ.get("STREAMER_MAX_SEQ_SPAN", "120.0"))
 
 # Context windows per detected event.
 STREAMER_CONTEXT_VARIANTS = int(os.environ.get("STREAMER_CONTEXT_VARIANTS", "4"))

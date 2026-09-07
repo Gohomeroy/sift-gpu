@@ -342,6 +342,32 @@ def _visual_events(
 # ── Merge + sequences ───────────────────────────────────────────────────────
 
 
+def _split_span(
+    events: list[dict[str, Any]],
+    max_span: float,
+    min_gap: float = 1.5,
+) -> list[list[dict[str, Any]]]:
+    """Split a merged event cluster so no group spans more than `max_span`.
+
+    Dense visual events (camera cuts every few seconds) would otherwise chain
+    the whole stream into one mega-sequence. Recursively cut at the largest
+    internal gap once the group exceeds the span budget.
+    """
+    if events[-1]["timestamp"] - events[0]["timestamp"] <= max_span:
+        return [events]
+    best_i, best_gap = -1, 0.0
+    for i in range(1, len(events)):
+        gap = events[i]["timestamp"] - events[i - 1]["timestamp"]
+        if gap > best_gap:
+            best_i, best_gap = i, gap
+    if best_i < 0 or best_gap < min_gap:
+        # Uniformly dense — leave as one cluster rather than splitting blindly.
+        return [events]
+    left = _split_span(events[:best_i], max_span, min_gap)
+    right = _split_span(events[best_i:], max_span, min_gap)
+    return left + right
+
+
 def merge_sequences(
     events: list[dict[str, Any]],
     gap: float = 6.0,
@@ -357,51 +383,53 @@ def merge_sequences(
         return []
     ordered = sorted(events, key=lambda e: e["timestamp"])
 
-    sequences: list[dict[str, Any]] = []
+    clusters: list[list[dict[str, Any]]] = []
     cur: list[dict[str, Any]] = [ordered[0]]
     for e in ordered[1:]:
         anchor = max(cur, key=lambda x: x["timestamp"])
         if e["timestamp"] - anchor["timestamp"] <= gap:
             cur.append(e)
         else:
-            sequences.append(cur)
+            clusters.append(cur)
             cur = [e]
-    sequences.append(cur)
+    clusters.append(cur)
 
-    out: list[dict[str, Any]] = []
-    for group in sequences:
-        start = min(g["timestamp"] for g in group)
-        end = max(g["timestamp"] for g in group)
-        peak = max(group, key=lambda g: g["initial_interest"])
-        types: list[str] = []
-        for g in group:
-            for t in g.get("event_types", []):
-                if t not in types:
-                    types.append(t)
-        sig: dict[str, float] = defaultdict(float)
-        for g in group:
-            for k, v in (g.get("signals") or {}).items():
-                if isinstance(v, (int, float)) and v > sig[k]:
-                    sig[k] = float(v)
-        # Soften with span length — very long merged regions dilute.
-        span = end - start
-        interest = float(peak["initial_interest"])
-        if span > gap * 2:
-            interest *= 0.9
-        out.append(
-            {
-                "start": round(max(0.0, start - 0.5), 2),
-                "peak": round(float(peak["timestamp"]), 2),
-                "end": round(end + 0.5, 2),
-                "event_types": types,
-                "signals": dict(sig),
-                "initial_interest": round(min(1.0, interest), 3),
-            }
-        )
+    sequences: list[dict[str, Any]] = []
+    max_span = config.STREAMER_MAX_SEQ_SPAN
+    for group in clusters:
+        for chunk in _split_span(group, max_span):
+            start = min(g["timestamp"] for g in chunk)
+            end = max(g["timestamp"] for g in chunk)
+            peak = max(chunk, key=lambda g: g["initial_interest"])
+            types: list[str] = []
+            for g in chunk:
+                for t in g.get("event_types", []):
+                    if t not in types:
+                        types.append(t)
+            sig: dict[str, float] = defaultdict(float)
+            for g in chunk:
+                for k, v in (g.get("signals") or {}).items():
+                    if isinstance(v, (int, float)) and v > sig[k]:
+                        sig[k] = float(v)
+            # Soften with span length — very long merged regions dilute.
+            span = end - start
+            interest = float(peak["initial_interest"])
+            if span > gap * 2:
+                interest *= 0.9
+            sequences.append(
+                {
+                    "start": round(max(0.0, start - 0.5), 2),
+                    "peak": round(float(peak["timestamp"]), 2),
+                    "end": round(end + 0.5, 2),
+                    "event_types": types,
+                    "signals": dict(sig),
+                    "initial_interest": round(min(1.0, interest), 3),
+                }
+            )
 
-    out.sort(key=lambda s: s["initial_interest"], reverse=True)
+    sequences.sort(key=lambda s: s["initial_interest"], reverse=True)
     n = max_seq or config.STREAMER_MAX_SEQUENCES
-    return out[:n]
+    return sequences[:n]
 
 
 # ── Context window generation ───────────────────────────────────────────────

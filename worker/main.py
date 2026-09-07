@@ -246,10 +246,15 @@ def streamer_pipeline(
 
     picks = svl.select_finals(analyzed, clip_count, total_duration, memory_used=used)
 
-    # Fallback: no VLM / everything rejected → heuristic candidates so a job
-    # never ends with zero clips because of a model hiccup.
-    if not picks:
-        print("[streamer] no surviving analysis — falling back to event-scored candidates", flush=True)
+    # Fallback/top-up: no VLM / everything rejected / Qwen approved fewer than
+    # requested → heuristic candidates fill the rest so a job always returns up
+    # to clip_count clips even if the model is picky or hiccups.
+    if len(picks) < clip_count:
+        print(
+            f"[streamer] {len(picks)} surviving analysis — topping up to {clip_count} "
+            "with event-scored candidates",
+            flush=True,
+        )
         ordered = sorted(
             candidates, key=lambda c: c.get("initial_interest", 0), reverse=True
         )
@@ -258,6 +263,9 @@ def streamer_pipeline(
                 break
             start = round(float(cand["start"]), 2)
             end = round(float(cand["end"]), 2)
+            key = memory.window_key(start, end)
+            if key in used:
+                continue
             if any(_overlap_ratio(cand, p) > 0.55 for p in picks):
                 continue
             cand["start"], cand["end"] = start, end
