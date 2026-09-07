@@ -36,21 +36,23 @@ import memory
 import vl as vl_core
 
 
-PASS_A_PROMPT = (
-    "You are a short-form livestream/Twitch/YouTube editor scouting candidate "
-    "moments from a stream. You will see {n} frames sampled around one moment "
-    "with timestamps, plus the transcript of that moment.\n\n"
-    "Understand what actually happens (words + visuals + reactions matter). "
-    "Decide whether this moment could work as a standalone short for a viewer "
-    "who never saw the stream.\n\n"
-    "Return ONLY minified JSON: "
-    '{"verdict": "reject"|"possible"|"strong", '
-    '"category": "funny"|"shocking"|"controversial"|"unexpected"|"rage"|'
-    '"awkward"|"impressive"|"wholesome"|"argument"|"reaction"|"other", '
-    '"summary": "<one sentence>", "confidence": <0.0-1.0>}\n'
-    "Be highly critical. A technically coherent conversation where nothing "
-    "entertaining happens is \"reject\"."
-)
+def _pass_a_prompt(n: int) -> str:
+    """PASS A prompt with the frame count inlined (avoid .format on JSON braces)."""
+    return (
+        "You are a short-form livestream/Twitch/YouTube editor scouting candidate "
+        f"moments from a stream. You will see {n} frames sampled around one moment "
+        "with timestamps, plus the transcript of that moment.\n\n"
+        "Understand what actually happens (words + visuals + reactions matter). "
+        "Decide whether this moment could work as a standalone short for a viewer "
+        "who never saw the stream.\n\n"
+        "Return ONLY minified JSON: "
+        '{"verdict": "reject"|"possible"|"strong", '
+        '"category": "funny"|"shocking"|"controversial"|"unexpected"|"rage"|'
+        '"awkward"|"impressive"|"wholesome"|"argument"|"reaction"|"other", '
+        '"summary": "<one sentence>", "confidence": <0.0-1.0>}\n'
+        "Be highly critical. A technically coherent conversation where nothing "
+        "entertaining happens is \"reject\"."
+    )
 
 PASS_B_PROMPT = (
     "You are an expert editor specializing in viral livestream, Twitch, "
@@ -315,7 +317,7 @@ def pass_a(
     if not tx.strip():
         tx = "(no transcript in this window)"
 
-    system = PASS_A_PROMPT.format(n=len(frames))
+    system = _pass_a_prompt(len(frames))
     content = _build_content(frames, tx)
     raw = _ask_vlm(system, content, max_tokens=300)
     data = _extract_json(raw) or _repair_json(raw) if raw else None
