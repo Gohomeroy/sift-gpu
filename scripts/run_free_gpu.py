@@ -160,7 +160,10 @@ def step_llama(arch):
     sh(f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DLLAMA_CURL=OFF "
        f"-DCMAKE_CUDA_ARCHITECTURES={arch}", check=False)
     sh(f"cmake --build {src}/build --config Release -j{os.cpu_count() or 4}", check=False)
-    sh(f"cp {src}/build/bin/llama-server {binary} && chmod +x {binary}")
+    # llama-server is a thin launcher; it needs the sibling .so libs. Copy the
+    # whole bin/ so libggml-cuda.so.0 etc land next to it.
+    sh(f"cp -r {src}/build/bin/. {os.path.dirname(binary)}")
+    sh(f"chmod +x {binary}")
     return binary
 
 def step_models(worker_dir):
@@ -209,7 +212,7 @@ def start_services():
 
     def bg(cmd, log, cwd=None):
         with open(log, "w") as lf:
-            p = subprocess.Popen(shlex.split(cmd), stdout=lf, stderr=lf,
+            p = subprocess.Popen(cmd, shell=True, stdout=lf, stderr=lf,
                                  env=env, start_new_session=True, cwd=cwd or REPO_DIR)
         return p
 
