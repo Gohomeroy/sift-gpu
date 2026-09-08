@@ -138,14 +138,36 @@ class _FaceDetector:
     """
 
     def __init__(self):
-        import mediapipe as mp
+        self._fd = None
+        try:
+            import mediapipe as mp
 
-        self._mp = mp
-        self._fd = mp.solutions.face_detection.FaceDetection(
-            model_selection=0, min_detection_confidence=FACE_MIN_CONFIDENCE
-        )
+            try:
+                self._fd = mp.solutions.face_detection.FaceDetection(
+                    model_selection=0, min_detection_confidence=FACE_MIN_CONFIDENCE
+                )
+            except (AttributeError, ImportError, KeyError):
+                # mediapipe >=0.10.x removed `solutions` (old BlazeFace API);
+                # the Tasks API needs a model download + converter. Fall back:
+                # detect() returns nothing and the YOLO/center-crop path drives
+                # the framing instead of crashing the whole cut.
+                print(
+                    "[reframe_v2] mediapipe solutions unavailable — "
+                    "falling back to YOLO/center-crop framing",
+                    flush=True,
+                )
+                self._fd = None
+        except Exception as exc:
+            print(
+                f"[reframe_v2] mediapipe unavailable ({exc}) — "
+                "falling back to YOLO/center-crop framing",
+                flush=True,
+            )
+            self._fd = None
 
     def detect(self, frame) -> list[tuple[int, int, int, int]]:
+        if self._fd is None:
+            return []
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self._fd.process(rgb)
