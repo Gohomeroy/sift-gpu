@@ -138,8 +138,61 @@ def step_python():
                  check=False)
     sh_shell("pip install -q --user yt-dlp 2>&1 | tail -2", check=False)
 
+PREBUILT_OWNER_REPO = "waqasm86/Ubuntu-Cuda-Llama.cpp-Executable"
+
+def prebuilt_asset_name():
+    """Resolve the current GitHub-release asset name for the prebuilt CUDA bundle."""
+    import json
+    import urllib.request
+    api = f"https://api.github.com/repos/{PREBUILT_OWNER_REPO}/releases/latest"
+    try:
+        with urllib.request.urlopen(api, timeout=30) as r:
+            data = json.load(r)
+        for a in data.get("assets", []):
+            name = a.get("name", "")
+            if "ubuntu-cuda-x64" in name:
+                return name
+    except Exception as exc:
+        print(f"!! prebuilt asset lookup failed: {exc}")
+    return ""
+
+def try_prebuilt_llama(binary):
+    """Download the community prebuilt CUDA llama-server (~290MB, no compile).
+
+    Ubuntu 22.04 / CUDA 12.x build that Colab and Kaggle both satisfy. If it
+    fails to load a CUDA runtime (old driver), falls back to the source build.
+    """
+    import urllib.request
+    name = prebuilt_asset_name()
+    if not name:
+        return False
+    url = f"https://github.com/{PREBUILT_OWNER_REPO}/releases/latest/download/{name}"
+    tarball = "/tmp/llama-prebuilt.tar.xz"
+    try:
+        print(f"downloading prebuilt llama-server ({name})")
+        urllib.request.urlretrieve(url, tarball)
+        subprocess.run(["tar", "-xf", tarball, "-C", "/tmp"], check=True)
+        found = subprocess.check_output(
+            ["bash", "-c",
+             f"find /tmp -name llama-server -type f 2>/dev/null | head -1"]
+        ).decode().strip()
+        if not found:
+            return False
+        sh(f"cp {found} {binary} && chmod +x {binary}")
+        out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30)
+        if out.returncode == 0 and "CUDA" in (out.stdout + out.stderr):
+            return True
+        print("!! prebuilt llama-server failed version/CUDA check — falling back to build")
+        try:
+            os.remove(binary)
+        except OSError:
+            pass
+    except Exception as exc:
+        print(f"!! prebuilt download failed ({exc}) — falling back to build")
+    return False
+
 def step_llama(arch):
-    """Ensure a CUDA llama-server binary built for this GPU's compute arch."""
+    """Ensure a CUDA llama-server binary. Prebuilt bundle first, else source build."""
     model_dir = os.path.join(REPO_DIR, "models")
     mod_vl = os.path.join(model_dir, "Qwen3-VL-8B-Instruct-Q4_K_M.gguf")
     mod_mm = os.path.join(model_dir, "mmproj-F16.gguf")
@@ -150,6 +203,8 @@ def step_llama(arch):
 
     binary = "/usr/local/bin/llama-server"
     if os.path.isfile(binary):
+        return binary
+    if try_prebuilt_llama(binary):
         return binary
     src = os.path.join(REPO_DIR, "llama_cpp_build")
     if not os.path.isdir(src):
