@@ -7,7 +7,6 @@ import {
 } from "remotion";
 import { Captions, type Cue } from "../components/Captions";
 import { ProgressBar } from "../components/ProgressBar";
-import { ViralTitle } from "../components/ViralTitle";
 import { ensureFonts } from "../fonts";
 
 export type ShortFormProps = {
@@ -26,7 +25,6 @@ export type ShortFormProps = {
 export const ShortFormVideo: React.FC<ShortFormProps> = ({
   videoUrl,
   cues,
-  title,
   captionStyle,
   captionFont,
   captionSub,
@@ -60,7 +58,6 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
           reframeStyle={reframeStyle}
           captionLayout={captionLayout}
         />
-        <ViralTitle title={title} />
         <ProgressBar durationSeconds={durationSeconds} />
       </Sequence>
     </AbsoluteFill>

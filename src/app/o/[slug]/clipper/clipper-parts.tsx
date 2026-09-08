@@ -2,12 +2,17 @@
 
 import { useActionState } from "react";
 import { Scissors, Sparkles } from "lucide-react";
-import { createClipJobAction } from "@/app/actions/clipper";
+import {
+  createClipJobAction,
+  deleteClipJobAction,
+  deleteClipAction,
+} from "@/app/actions/clipper";
 import { emptyState } from "@/lib/action-state";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { Chip } from "@/components/ui/chip";
+import { DangerButton } from "@/components/ui/danger-button";
 import { PostButton } from "./post-button";
 import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
 
@@ -599,18 +604,63 @@ function parseTags(tags: Clip["hashtags"]): string[] {
   }
 }
 
+export function ClipDeleteButton({
+  clipId,
+  slug,
+}: {
+  clipId: string;
+  slug: string;
+}) {
+  const [state, action, pending] = useActionState(deleteClipAction, emptyState);
+
+  return (
+    <form action={action} className="flex items-center gap-1.5">
+      <input type="hidden" name="clip_id" value={clipId} />
+      <input type="hidden" name="slug" value={slug} />
+      <DangerButton
+        label="delete"
+        confirmLabel="delete?"
+        disabled={pending}
+        className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 font-mono text-[10px] text-faint transition-colors duration-150 hover:bg-raised hover:text-err disabled:cursor-default disabled:opacity-50"
+      />
+      {state.error && <span className="text-[10px] text-err">{state.error}</span>}
+    </form>
+  );
+}
+
+export function JobDeleteControl({
+  jobId,
+  slug,
+}: {
+  jobId: string;
+  slug: string;
+}) {
+  const [state, action, pending] = useActionState(deleteClipJobAction, emptyState);
+
+  return (
+    <form action={action} className="inline-flex items-center gap-1.5">
+      <input type="hidden" name="job_id" value={jobId} />
+      <input type="hidden" name="slug" value={slug} />
+      <DangerButton label="DELETE" confirmLabel="SURE?" disabled={pending} />
+      {state.error && <span className="text-[10px] text-err">{state.error}</span>}
+    </form>
+  );
+}
+
 export function ClipCard({
   clip,
   url,
   accounts,
   posts,
   slug,
+  canDelete,
 }: {
   clip: Clip;
   url: string | null;
   accounts: LinkedAccount[];
   posts: ClipPost[];
   slug: string;
+  canDelete?: boolean;
 }) {
   const tags = parseTags(clip.hashtags);
   const mmss = (v: number | null) =>
@@ -706,6 +756,11 @@ export function ClipCard({
               posts={posts}
               slug={slug}
             />
+          )}
+          {canDelete && (
+            <span className="ml-auto">
+              <ClipDeleteButton clipId={clip.id} slug={slug} />
+            </span>
           )}
         </div>
       </div>

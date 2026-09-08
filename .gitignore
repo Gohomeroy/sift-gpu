@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# supabase cli
+supabase/.temp/
+
 # clip worker
 worker/.venv/
 worker/tmp/

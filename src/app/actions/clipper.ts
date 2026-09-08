@@ -49,12 +49,32 @@ export async function createClipJobAction(
   return { error: null, success: `JOB:${jobId}` };
 }
 
-export async function deleteClipJobAction(formData: FormData) {
+export async function deleteClipJobAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const supabase = await createClient();
   const jobId = String(formData.get("job_id") ?? "");
   const slug = String(formData.get("slug") ?? "");
 
-  await supabase.rpc("delete_clip_job", { p_job: jobId });
+  const { error } = await supabase.rpc("delete_clip_job", { p_job: jobId });
+  if (error) return { error: error.message, success: null };
 
   revalidatePath(`/o/${slug}/clipper`);
+  return { error: null, success: "Job deleted." };
+}
+
+export async function deleteClipAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const supabase = await createClient();
+  const clipId = String(formData.get("clip_id") ?? "");
+  const slug = String(formData.get("slug") ?? "");
+
+  const { error } = await supabase.rpc("delete_clip", { p_clip: clipId });
+  if (error) return { error: error.message, success: null };
+
+  revalidatePath(`/o/${slug}/clipper`);
+  return { error: null, success: "Clip deleted." };
 }

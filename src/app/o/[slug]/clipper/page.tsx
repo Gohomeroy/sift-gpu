@@ -5,11 +5,9 @@ import { requireOrgContext } from "@/lib/org-context";
 import { createClient } from "@/lib/supabase/server";
 import { can } from "@/lib/permissions";
 import { EmptyState } from "@/components/ui/empty";
-import { DangerButton } from "@/components/ui/danger-button";
 import { RealtimeRefresher } from "../jobs/realtime-refresher";
-import { deleteClipJobAction } from "@/app/actions/clipper";
 import { TRAXN_OWNER_UID } from "@/lib/traxn-owner";
-import { NewJobForm, ClipCard, JobProgress, EditHint } from "./clipper-parts";
+import { NewJobForm, ClipCard, JobProgress, EditHint, JobDeleteControl } from "./clipper-parts";
 import { timeAgo } from "@/lib/utils";
 import type { Clip, ClipJob, LinkedAccount, ClipPost } from "@/lib/types";
 
@@ -144,11 +142,7 @@ export default async function ClipperPage({
                     <span className="ml-auto">
                       {(job.created_by === member.user_id ||
                         org.owner_id === member.user_id) && (
-                        <form action={deleteClipJobAction}>
-                          <input type="hidden" name="job_id" value={job.id} />
-                          <input type="hidden" name="slug" value={slug} />
-                          <DangerButton label="DELETE" confirmLabel="SURE?" />
-                        </form>
+                        <JobDeleteControl jobId={job.id} slug={slug} />
                       )}
                     </span>
                   </div>
@@ -185,6 +179,10 @@ export default async function ClipperPage({
                             accounts={(accounts ?? []) as unknown as LinkedAccount[]}
                             posts={(posts ?? []) as unknown as ClipPost[]}
                             slug={slug}
+                            canDelete={
+                              job.created_by === member.user_id ||
+                              org.owner_id === member.user_id
+                            }
                           />
                         ))}
                       </div>
