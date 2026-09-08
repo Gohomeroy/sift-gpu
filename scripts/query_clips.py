@@ -44,6 +44,33 @@ def requeue(job_id: str) -> None:
     print("requeued:", res.data)
 
 
+def mk(source_url: str, title: str, clip_count: int = 1,
+       content_type: str = "streamer") -> None:
+    """Insert a fresh queued clip job (mirrors the web app's shape)."""
+    # Reuse the organization that produced the 16 completed runs.
+    org_id = "84a54e3f-ad03-44cc-b34b-ba68fd403176"
+    created_by = "bbca7565-4d7f-48b9-948b-0fca51f7346d"
+    sb_c = sb._client()
+    res = sb_c.table("clip_jobs").insert({
+        "organization_id": org_id,
+        "created_by": created_by,
+        "source_url": source_url,
+        "title": title,
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "provider": "local",
+        "caption_style": "pop",
+        "clip_count": clip_count,
+        "caption_font": "anton",
+        "caption_sub": "zoom",
+        "caption_theme": "pop",
+        "reframe_style": "track",
+        "content_type": content_type,
+    }).execute()
+    print("inserted:", res.data[0]["id"], res.data[0]["status"])
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     if not args or args[0] == "ls":
@@ -52,5 +79,8 @@ if __name__ == "__main__":
         show(args[1])
     elif args[0] == "requeue":
         requeue(args[1])
+    elif args[0] == "mk" and len(args) >= 3:
+        mk(args[1], args[2], int(args[3]) if len(args) > 3 else 1,
+           args[4] if len(args) > 4 else "streamer")
     else:
         print(__doc__)
