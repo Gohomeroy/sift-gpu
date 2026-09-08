@@ -145,7 +145,9 @@ def step_python():
 
 # Prebuilt CUDA llama-server bundle (llama.cpp master f3f1a8f, Qwen3-VL ready,
 # includes libggml-cuda.so.0.23.0). Building from source on a 2-core free GPU
-# takes ~1h; this asset skips the compile entirely.
+# takes ~1h; this asset skips the compile entirely. Verified by asking the
+# binary for its device list (llama-server --list-devices => "CUDA0: ..."), which
+# also proves the bundled libggml-cuda loads against this machine's driver.
 PREBUILT_URL = ("https://github.com/Gohomeroy/sift-gpu/releases/download/"
                 "llama-cuda-bundle/llama-cuda-bundle.tar.gz")
 PREBUILT_MD5 = "ee09dda197a73d5e6634d739d3b43cc2"
@@ -175,11 +177,11 @@ def try_prebuilt_llama(binary):
         subprocess.run(["tar", "-xzf", bundle, "-C", os.path.dirname(binary)],
                        check=True)
         sh(f"chmod +x {binary}")
-        out = subprocess.run([binary, "--version"], capture_output=True,
+        out = subprocess.run([binary, "--list-devices"], capture_output=True,
                              text=True, timeout=30)
-        if out.returncode == 0 and "CUDA" in (out.stdout + out.stderr):
+        if "CUDA0" in (out.stdout + out.stderr):
             return True
-        print("!! cached llama-server failed version check — will rebuild")
+        print("!! cached llama-server has no CUDA0 device — will rebuild")
     except Exception as exc:
         print(f"!! cached llama-server extract failed ({exc}) — will rebuild")
     return False
