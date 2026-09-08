@@ -143,10 +143,54 @@ def step_python():
                  check=False)
     sh_shell("pip install -q --user yt-dlp 2>&1 | tail -2", check=False)
 
+# Prebuilt CUDA llama-server bundle (llama.cpp master f3f1a8f, Qwen3-VL ready,
+# includes libggml-cuda.so.0.23.0). Building from source on a 2-core free GPU
+# takes ~1h; this asset skips the compile entirely.
+PREBUILT_URL = ("https://github.com/Gohomeroy/sift-gpu/releases/download/"
+                "llama-cuda-bundle/llama-cuda-bundle.tar.gz")
+PREBUILT_MD5 = "ee09dda197a73d5e6634d739d3b43cc2"
+
+def _md5(path):
+    import hashlib
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def try_prebuilt_llama(binary):
+    """Fetch the cached CUDA bundle and verify it. Returns True if ready."""
+    import urllib.request
+    bundle = "/tmp/llama-cuda-bundle.tar.gz"
+    try:
+        if not (os.path.isfile(bundle) and _md5(bundle) == PREBUILT_MD5):
+            print(f"downloading cached llama-server ({PREBUILT_MD5[:8]}…)")
+            urllib.request.urlretrieve(PREBUILT_URL, bundle)
+        if _md5(bundle) != PREBUILT_MD5:
+            return False
+    except Exception as exc:
+        print(f"!! cached bundle download failed ({exc})")
+        return False
+    try:
+        subprocess.run(["tar", "-xzf", bundle, "-C", os.path.dirname(binary)],
+                       check=True)
+        sh(f"chmod +x {binary}")
+        out = subprocess.run([binary, "--version"], capture_output=True,
+                             text=True, timeout=30)
+        if out.returncode == 0 and "CUDA" in (out.stdout + out.stderr):
+            return True
+        print("!! cached llama-server failed version check — will rebuild")
+    except Exception as exc:
+        print(f"!! cached llama-server extract failed ({exc}) — will rebuild")
+    return False
+
 def step_llama(arch):
-    """Ensure a CUDA llama-server binary built for this GPU's compute arch
-    (source build only — prebuilt bundles found in the wild predate Qwen3-VL,
-    which shows up as 'unknown model architecture: qwen3vl')."""
+    """Ensure a CUDA llama-server binary: cached bundle first, source build else.
+
+    A prebuilt binary from the release needs NO compile, so a fresh free-GPU
+    session boots the stack in minutes instead of ~1h. Guarded by an md5 of
+    the exact asset we shipped, so a bad/absent download falls back to the
+    source build (which is the guaranteed-old reliable path)."""
     model_dir = os.path.join(REPO_DIR, "models")
     mod_vl = os.path.join(model_dir, "Qwen3-VL-8B-Instruct-Q4_K_M.gguf")
     mod_mm = os.path.join(model_dir, "mmproj-F16.gguf")
@@ -157,6 +201,8 @@ def step_llama(arch):
 
     binary = "/usr/local/bin/llama-server"
     if os.path.isfile(binary):
+        return binary
+    if try_prebuilt_llama(binary):
         return binary
     src = os.path.join(REPO_DIR, "llama_cpp_build")
     if not os.path.isdir(src):
