@@ -113,14 +113,23 @@ def step_env(worker_dir):
             print(f"!!  {env_file} (or use Colab 'Secrets' panel), then re-run.")
 
 def step_system():
-    # apt packages (best-effort — Colab root OK, Kaggle mostly OK)
+    # apt packages (best-effort — Colab root OK, Kaggle mostly OK). Ubuntu
+    # codenames differ: the -t64 package names only exist on 24.04, so we
+    # install the base set first (22.04 names) and t64 as a harmless no-op.
+    base = ["ffmpeg", "libgl1", "libegl1", "libglib2.0-0", "libsm6",
+            "libxext6", "libxrender-dev", "git", "curl", "wget", "cmake",
+            "build-essential", "libnss3", "libnspr4", "libatk1.0-0",
+            "libatk-bridge2.0-0", "libcups2", "libdrm2", "libxkbcommon0",
+            "libxcomposite1", "libxdamage1", "libxfixes3", "libxrandr2",
+            "libgbm1", "libasound2", "libpango-1.0-0", "libcairo2"]
     sh_shell(
         "DEBIAN_FRONTEND=noninteractive apt-get update -qq && "
-        "apt-get install -y -qq ffmpeg libgl1 libegl1 libglib2.0-0 libsm6 "
-        "libxext6 libxrender-dev git curl wget cmake build-essential "
-        "libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2t64 libdrm2 "
-        "libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 "
-        "libgbm1 libasound2t64 libpango-1.0-0 libcairo2 2>&1 | tail -3",
+        f"apt-get install -y -qq {' '.join(base)} 2>&1 | tail -3; true",
+        check=False,
+    )
+    sh_shell(
+        "DEBIAN_FRONTEND=noninteractive "
+        "apt-get install -y -qq libcups2t64 libasound2t64 2>&1 | tail -2; true",
         check=False,
     )
 
@@ -178,10 +187,18 @@ def try_prebuilt_llama(binary):
                        check=True)
         sh(f"chmod +x {binary}")
         out = subprocess.run([binary, "--list-devices"], capture_output=True,
-                             text=True, timeout=30)
+                             text=True, timeout=60)
         if "CUDA0" in (out.stdout + out.stderr):
             return True
-        print("!! cached llama-server has no CUDA0 device — will rebuild")
+        print(f"!! cached llama-server has no CUDA0 device — will rebuild")
+        print(f"!!   rc={out.returncode}")
+        for name, text in (("stdout", out.stdout), ("stderr", out.stderr)):
+            if text.strip():
+                print(f"!!   {name}: {text.strip()[:800]}")
+        dbg = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version",
+                              "--format=csv,noheader"], capture_output=True,
+                             text=True, timeout=30)
+        print(f"!!   gpu: {dbg.stdout.strip() or dbg.stderr.strip()}")
     except Exception as exc:
         print(f"!! cached llama-server extract failed ({exc}) — will rebuild")
     return False
