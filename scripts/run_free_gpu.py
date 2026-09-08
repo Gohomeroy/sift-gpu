@@ -48,9 +48,14 @@ VRAM_TWOGPU_GB = 22            # need ~22GB to host BOTH llama servers
 VL_CTX_FREEBGPU = 8192
 GEN_CTX_FREEBGPU = 4096
 
+# Colab's own notebook server owns :8080 (:8090/8092 picked to avoid it;
+# the worker learns the real port via the LLAMA_SERVER_URL env override).
+LLAMA_PORT = 8090
+QWEN_PORT = 8092
+
 SERVICES = {
-    "llama-vl":    ("http://127.0.0.1:8080/health",  "llama-server --model"),
-    "qwen3-8b":    ("http://127.0.0.1:8082/health",  None),  # optional
+    "llama-vl":    (f"http://127.0.0.1:{LLAMA_PORT}/health",  "llama-server --model"),
+    "qwen3-8b":    (f"http://127.0.0.1:{QWEN_PORT}/health",  None),  # optional
     "render":      ("http://127.0.0.1:3002/health",  "tsx server/index.ts"),
     "worker":      (None, None),
 }
@@ -206,8 +211,10 @@ def start_services():
     env = dict(os.environ)
     env.update({
         "RENDER_SERVER_URL": "http://127.0.0.1:3002",
+        "LLAMA_SERVER_URL": f"http://127.0.0.1:{LLAMA_PORT}",
         "WORK_DIR": os.path.join(REPO_DIR, "tmp"),
         "QWEN8B_ENABLED": "1" if two_servers else "0",
+        "QWEN_SERVER_URL": f"http://127.0.0.1:{QWEN_PORT}/v1",
     })
 
     def bg(cmd, log, cwd=None):
@@ -225,22 +232,22 @@ def start_services():
     ctx_vl = str(VL_CTX_FREEBGPU if not two_servers else 16384)
     p = bg(
         f"llama-server --model {mod_dir}/Qwen3-VL-8B-Instruct-Q4_K_M.gguf "
-        f"--mmproj {mod_dir}/mmproj-F16.gguf --port 8080 --ctx-size {ctx_vl} "
+        f"--mmproj {mod_dir}/mmproj-F16.gguf --port {LLAMA_PORT} --ctx-size {ctx_vl} "
         f"--threads 4 --n-gpu-layers 99 --flash-attn on --host 0.0.0.0 ",
         "/tmp/llama-vl.log",
     )
-    print(f"  llama-vl pid={p.pid} ctx={ctx_vl}")
+    print(f"  llama-vl pid={p.pid} port={LLAMA_PORT} ctx={ctx_vl}")
 
     if two_servers:
         mod8 = os.path.join(mod_dir, "Qwen3-8B-Q4_K_M.gguf")
         if os.path.isfile(mod8):
             p = bg(
-                f"llama-server --model {mod8} --port 8082 "
+                f"llama-server --model {mod8} --port {QWEN_PORT} "
                 f"--ctx-size {GEN_CTX_FREEBGPU} --threads 4 --n-gpu-layers 99 "
                 f"--flash-attn on --host 0.0.0.0 ",
                 "/tmp/llama-8b.log",
             )
-            print(f"  qwen3-8b pid={p.pid} (ctx {GEN_CTX_FREEBGPU})")
+            print(f"  qwen3-8b pid={p.pid} port={QWEN_PORT} (ctx {GEN_CTX_FREEBGPU})")
 
     rem = os.path.join(REPO_DIR, "worker", "remotion")
     p = bg(
@@ -264,9 +271,9 @@ def health():
         except Exception:
             return False
     lines = []
-    lines.append(f"llama-vl  :8080  {'UP' if _h('http://127.0.0.1:8080/health') else 'DOWN'}   (tail /tmp/llama-vl.log)")
+    lines.append(f"llama-vl  :{LLAMA_PORT}  {'UP' if _h(f'http://127.0.0.1:{LLAMA_PORT}/health') else 'DOWN'}   (tail /tmp/llama-vl.log)")
     if gpu_mem_gb() >= VRAM_TWOGPU_GB:
-        lines.append(f"qwen3-8b  :8082  {'UP' if _h('http://127.0.0.1:8082/health') else 'DOWN'}   (tail /tmp/llama-8b.log)")
+        lines.append(f"qwen3-8b  :{QWEN_PORT}  {'UP' if _h(f'http://127.0.0.1:{QWEN_PORT}/health') else 'DOWN'}   (tail /tmp/llama-8b.log)")
     lines.append(f"render    :3002  {'UP' if _h('http://127.0.0.1:3002/health') else 'DOWN'}   (tail /tmp/render.log)")
     worker = False
     try:
