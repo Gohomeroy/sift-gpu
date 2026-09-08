@@ -136,10 +136,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, data.encode())
             if path == "/download":
                 fp = q.get("file", [""])[0]
+                start = int(q.get("start", ["0"])[0])
+                cnt = int(q.get("count", ["-1"])[0])
                 if not fp or not os.path.isfile(fp):
                     return self._send(404, b"no such file")
                 with open(fp, "rb") as f:
-                    body = f.read()
+                    f.seek(start)
+                    body = f.read(cnt) if cnt >= 0 else f.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Content-Length", str(len(body)))
