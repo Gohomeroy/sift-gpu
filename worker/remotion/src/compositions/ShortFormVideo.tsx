@@ -19,6 +19,7 @@ export type ShortFormProps = {
   captionTheme?: string;
   reframeStyle?: string;
   captionLayout?: string;
+  emojiBaseUrl?: string;
   durationSeconds: number;
 };
 
@@ -31,6 +32,7 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
   captionTheme,
   reframeStyle,
   captionLayout,
+  emojiBaseUrl,
   durationSeconds,
 }) => {
   const { width, height, fps } = useVideoConfig();
@@ -57,6 +59,7 @@ export const ShortFormVideo: React.FC<ShortFormProps> = ({
           theme={captionTheme}
           reframeStyle={reframeStyle}
           captionLayout={captionLayout}
+          emojiBaseUrl={emojiBaseUrl}
         />
         <ProgressBar durationSeconds={durationSeconds} />
       </Sequence>

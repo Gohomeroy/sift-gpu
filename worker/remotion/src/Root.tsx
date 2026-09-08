@@ -25,6 +25,7 @@ export const RemotionRoot: React.FC = () => {
             captionFont: "anton",
             captionSub: "zoom",
             captionTheme: "pop",
+            emojiBaseUrl: "",
             durationSeconds: 40,
           } satisfies ShortFormProps
         }

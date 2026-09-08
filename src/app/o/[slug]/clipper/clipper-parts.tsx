@@ -23,6 +23,7 @@ export const CAPTION_STYLES = [
   { id: "minimal", label: "MINIMAL", hint: "Thin quiet uppercase" },
   { id: "two_tone", label: "TWO TONE", hint: "Heavy black outline · yellow pop" },
   { id: "pop", label: "POP", hint: "CapCut classic · bold white caps" },
+  { id: "vizard", label: "VIZARD", hint: "Montserrat XL · gold pop · glowing keywords" },
 ] as const;
 
 export const CAPTION_FONTS = [
@@ -50,6 +51,7 @@ export const CAPTION_THEMES = [
   { id: "grape", label: "GRAPE", hint: "Purple panel · lavender accent" },
   { id: "beast", label: "BEAST", hint: "White · lime accent" },
   { id: "poppin", label: "POPPIN", hint: "White · pink accent" },
+  { id: "vizard", label: "VIZARD", hint: "White · gold accent · Apple emoji" },
 ] as const;
 
 export const REFRAME_STYLES = [
@@ -144,6 +146,7 @@ const CAP_LOOK: Record<string, { base: string; active: string; strokeW: number; 
   minimal: { base: "rgba(255,255,255,0.55)", active: "#FFFFFF", strokeW: 0, strokeColor: "transparent", size: 10, weight: 600, shadow: true },
   two_tone: { base: "#FFFFFF", active: "#FFD700", strokeW: 8, strokeColor: "#000000", size: 13, weight: 900 },
   pop: { base: "#FFFFFF", active: "#FFD700", strokeW: 9, strokeColor: "#000000", size: 14, weight: 900 },
+  vizard: { base: "#FFFFFF", active: "#FFE600", strokeW: 9, strokeColor: "#000000", size: 14, weight: 900 },
 };
 
 function CaptionStyleMock({ id }: { id: string }) {
@@ -208,6 +211,7 @@ const THEME_LOOK: Record<string, { base: string; active: string; strokeW: number
   grape: { base: "#FFFFFF", active: "#C9A5FF", strokeW: 4, strokeColor: "#000000", bg: "rgba(56,18,92,0.88)" },
   beast: { base: "#FFFFFF", active: "#B7F000", strokeW: 6, strokeColor: "#000000" },
   poppin: { base: "#FFFFFF", active: "#FF5C8A", strokeW: 5, strokeColor: "#000000" },
+  vizard: { base: "#FFFFFF", active: "#FFE600", strokeW: 9, strokeColor: "#000000" },
 };
 
 function ThemeMock({ id }: { id: string }) {

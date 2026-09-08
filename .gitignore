@@ -53,6 +53,7 @@ worker/llama/
 worker/models/
 worker/remotion/node_modules/
 worker/remotion/out/
+worker/remotion/build/
 worker/remotion/*.log
 dev-output.log
 __pycache__/

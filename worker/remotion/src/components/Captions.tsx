@@ -1,12 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   AbsoluteFill,
+  Img,
   spring,
   useCurrentFrame,
   useVideoConfig,
   interpolate,
 } from "remotion";
 import { fontFamilyFor } from "../fonts";
+import {
+  splitTextRuns,
+  emojiAssetName,
+  isSpecialWord,
+  accentForWord,
+} from "./captionText";
 
 export type CueWord = { text: string; start: number; end: number };
 export type Cue = { start: number; end: number; words: CueWord[] };
@@ -17,7 +24,8 @@ export type CaptionStyleName =
   | "boxed"
   | "minimal"
   | "two_tone"
-  | "pop";
+  | "pop"
+  | "vizard";
 export type CaptionSubName =
   | "plain"
   | "bounce"
@@ -31,7 +39,8 @@ export type CaptionThemeName =
   | "hustle"
   | "grape"
   | "beast"
-  | "poppin";
+  | "poppin"
+  | "vizard";
 
 export type CaptionStyleSpec = {
   fontSize: number;
@@ -42,6 +51,10 @@ export type CaptionStyleSpec = {
   strokeColor: string;
   shadow: boolean;
   boxedActive: boolean;
+  // Vizard-look extras (off for every legacy style, so nothing changes).
+  font?: string; // force a family (vizard → montserrat)
+  strokeGlow?: boolean; // soft outer glow on active + special words
+  colorAccents?: boolean; // let special words break out in accent colors
 };
 
 export const CAPTION_STYLES: Record<CaptionStyleName, CaptionStyleSpec> = {
@@ -112,6 +125,22 @@ export const CAPTION_STYLES: Record<CaptionStyleName, CaptionStyleSpec> = {
     shadow: false,
     boxedActive: false,
   },
+  // The Vizard viral look: Montserrat ExtraBold caps, heavy black outline,
+  // golden active pop, special words (numbers, power words) glow in accent
+  // colors, and Apple-style emojis render as real PNG assets.
+  vizard: {
+    fontSize: 66,
+    textTransform: "uppercase",
+    baseColor: "#FFFFFF",
+    activeColor: "#FFE600",
+    strokeWidth: 9,
+    strokeColor: "#000000",
+    shadow: false,
+    boxedActive: false,
+    font: "montserrat",
+    strokeGlow: true,
+    colorAccents: true,
+  },
 };
 
 // Theme palettes override the base + active colors (and sometimes add a bg).
@@ -166,6 +195,14 @@ export const CAPTION_THEMES: Record<CaptionThemeName, Theme> = {
     strokeWidth: 5,
     strokeColor: "#000000",
   },
+  // Gold active on pure white — pairs with the vizard style's extra bold.
+  vizard: {
+    baseColor: "#FFFFFF",
+    activeColor: "#FFE600",
+    background: undefined,
+    strokeWidth: 9,
+    strokeColor: "#000000",
+  },
 };
 
 function strokeFor(spec: {
@@ -187,11 +224,43 @@ function strokeFor(spec: {
 
 export type SubAnimStyle = "plain" | "bounce" | "fade" | "zoom" | "wave" | "rotate";
 
+/** Inline Apple-style emoji: renders the local PNG, falls back to the glyph. */
+const EmojiGlyph: React.FC<{
+  emoji: string;
+  baseUrl: string;
+  size: number;
+}> = ({ emoji, baseUrl, size }) => {
+  const [failed, setFailed] = useState(false);
+  if (!baseUrl) {
+    return <span style={{ fontSize: size }}>{emoji}</span>;
+  }
+  const src = `${baseUrl}/${emojiAssetName(emoji)}`;
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        verticalAlign: "-0.12em",
+        margin: "0 3px",
+      }}
+    >
+      <Img
+        src={src}
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+        onError={() => setFailed(true)}
+      />
+    </span>
+  );
+};
+
 /**
  * Word-pop captions renderer.
  *
  * Dimensions combine independently:
- *   - style   → base font size, box behavior, capitalization
+ *   - style   → base font size, box behavior, capitalization, vizard extras
  *   - theme   → color palette (base/active/stroke/background)
  *   - sub     → animation of the spoken word (plain/bounce/fade/zoom/wave/rotate)
  *
@@ -206,6 +275,7 @@ export const Captions: React.FC<{
   theme?: string;
   reframeStyle?: string;
   captionLayout?: string;
+  emojiBaseUrl?: string;
 }> = ({
   cues,
   style,
@@ -214,6 +284,7 @@ export const Captions: React.FC<{
   theme = "pop",
   reframeStyle = "track",
   captionLayout = "center",
+  emojiBaseUrl = "",
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -318,6 +389,9 @@ export const Captions: React.FC<{
             const isBox = spec.boxedActive;
             const isPill = style === "pill";
             const isMinimal = style === "minimal";
+            const isSpecial =
+              spec.colorAccents === true && isSpecialWord(w.text);
+            const accent = isSpecial ? accentForWord(w.text) : null;
             const bg = isBox
               ? isActive
                 ? palette.activeColor
@@ -326,15 +400,18 @@ export const Captions: React.FC<{
                   : palette.background ?? "rgba(0,0,0,0.82)"
               : palette.background;
             // Pills are light chips with dark text; everything else uses the theme palette.
+            // Special words keep their accent color even while active (Vizard style).
             const color = isPill
               ? "#111111"
               : isBox
                 ? isActive
                   ? "#111111"
                   : "#FFFFFF"
-                : isActive
-                  ? palette.activeColor
-                  : palette.baseColor;
+                : accent
+                  ? accent
+                  : isActive
+                    ? palette.activeColor
+                    : palette.baseColor;
 
             const effSpec = {
               ...spec,
@@ -346,11 +423,31 @@ export const Captions: React.FC<{
 
             const lineIsCurrent = cue === onScreen[onScreen.length - 1];
 
+            // Soft glow for Vizard: active + special words radiate their color.
+            const glowOn = (isActive || (isSpecial && accent != null)) && spec.strokeGlow;
+            const glowColor = accent ?? palette.activeColor;
+            const glow = glowOn
+              ? `0 ${Math.round(spec.strokeWidth * 0.35)}px ${
+                  Math.round(spec.strokeWidth * 1.4)
+                }px ${glowColor}, 0 0 ${
+                  Math.round(spec.strokeWidth * 2.2)
+                }px ${glowColor}, 0 0 ${
+                  Math.round(spec.strokeWidth * 3.4)
+                }px ${glowColor}`
+              : undefined;
+
+            const fontName =
+              (spec.font && (font === "anton" || font === "impact")) || !font
+                ? spec.font
+                : font;
+
+            const emojiSize = Math.round(spec.fontSize * fontScale * 0.95);
+
             return (
               <span
                 key={`${cue.start}-${wi}`}
                 style={{
-                  fontFamily: fontFamilyFor(font),
+                  fontFamily: fontFamilyFor(fontName as string),
                   fontSize: spec.fontSize * fontScale,
                   fontWeight:
                     isPill ? 800 : isMinimal ? 600 : 900,
@@ -373,9 +470,21 @@ export const Captions: React.FC<{
                       : 1,
                   transition: "none",
                   ...strokeFor(effSpec),
+                  textShadow: glow ?? strokeFor(effSpec).textShadow,
                 }}
               >
-                {w.text}
+                {splitTextRuns(w.text).map((run, i) =>
+                  run.type === "emoji" ? (
+                    <EmojiGlyph
+                      key={`${wi}-e${i}`}
+                      emoji={run.value}
+                      baseUrl={emojiBaseUrl}
+                      size={emojiSize}
+                    />
+                  ) : (
+                    <span key={`${wi}-t${i}`}>{run.value}</span>
+                  ),
+                )}
               </span>
             );
           }),

@@ -21,6 +21,9 @@ const FILES_DIR = path.resolve(
   process.env.RENDER_FILES_DIR || process.cwd(),
 );
 const RENDER_OUT_DIR = path.join(FILES_DIR, "renders");
+// Apple emoji PNGs live in <FILES_DIR>/emoji/ (fetched by scripts/fetch_emojis.py)
+// and are served back under the same /clips mount that feeds OffthreadVideo.
+const EMOJI_BASE_URL = `http://127.0.0.1:${PORT}/clips/emoji`;
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
@@ -71,6 +74,7 @@ app.post("/render", async (req, res) => {
       captionTheme: String(captionTheme || "pop"),
       reframeStyle: String(reframeStyle || "track"),
       captionLayout: String(captionLayout || "center"),
+      emojiBaseUrl: EMOJI_BASE_URL,
       durationSeconds: Number(durationSeconds),
       outName: String(outName).replace(/[^a-zA-Z0-9_-]/g, "_"),
       outDir: RENDER_OUT_DIR,

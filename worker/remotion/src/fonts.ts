@@ -13,7 +13,7 @@ import { loadFont as loadOutfit } from "@remotion/google-fonts/Outfit";
 import { loadFont as loadRajdhani } from "@remotion/google-fonts/Rajdhani";
 
 const anton = loadAnton();
-const montserrat = loadMontserrat("normal", { weights: ["700", "800"] });
+const montserrat = loadMontserrat("normal", { weights: ["700", "800", "900"] });
 const poppins = loadPoppins("normal", { weights: ["600", "800"] });
 const outfit = loadOutfit("normal", { weights: ["700", "800"] });
 const rajdhani = loadRajdhani("normal", { weights: ["700"] });

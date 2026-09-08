@@ -33,6 +33,7 @@ export async function renderClip(opts: {
   captionTheme?: string;
   reframeStyle?: string;
   captionLayout?: string;
+  emojiBaseUrl?: string;
   durationSeconds: number;
   outName: string;
   outDir: string;
@@ -50,6 +51,7 @@ export async function renderClip(opts: {
     captionTheme: opts.captionTheme,
     reframeStyle: opts.reframeStyle,
     captionLayout: opts.captionLayout,
+    emojiBaseUrl: opts.emojiBaseUrl,
     durationSeconds: opts.durationSeconds,
   };
 

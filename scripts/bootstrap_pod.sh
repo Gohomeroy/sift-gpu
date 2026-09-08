@@ -201,6 +201,10 @@ if [ ! -d node_modules ]; then
 fi
 cd "$REPO_DIR"
 
+# Apple Color Emoji pack for the Vizard caption look (idempotent, ~14MB).
+log "  fetching Apple emoji assets (vizard captions)..."
+python3 "$SCRIPT_DIR/fetch_emojis.py" --dir "$WORK_DIR/emoji" 2>&1 | sed 's/^/  /'
+
 # WARP egress — only if warp is installed (fresh pods need it installed first)
 if command -v warp-cli >/dev/null 2>&1; then
   bash "$SCRIPT_DIR/boot_warp.sh" 2>&1 | sed 's/^/  /'
