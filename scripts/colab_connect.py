@@ -41,8 +41,8 @@ import json
 
 REPO_URL = "https://github.com/Gohomeroy/sift-gpu.git"
 REPO_DIR = "/content/sift" if os.path.isdir("/content") else "/kaggle/working/sift"
-EXEC_PORT = 8787
-TOKEN = secrets.token_hex(16)
+EXEC_PORT = int(os.environ.get("SIFT_EXEC_PORT", "8787"))
+TOKEN = os.environ.get("SIFT_EXEC_TOKEN", "") or secrets.token_hex(16)
 
 def sh(cmd, check=False, timeout=600):
     print(f"$ {cmd}", flush=True)
@@ -134,6 +134,18 @@ class Handler(BaseHTTPRequestHandler):
                     data = f.read()[-MAX_OUT:]
                     data = "\n".join(data.splitlines()[-tail:])
                 return self._send(200, data.encode())
+            if path == "/download":
+                fp = q.get("file", [""])[0]
+                if not fp or not os.path.isfile(fp):
+                    return self._send(404, b"no such file")
+                with open(fp, "rb") as f:
+                    body = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if path == "/run":
                 cmd = q.get("cmd", [""])[0]
                 timeout = int(q.get("timeout", ["7200"])[0])
@@ -199,6 +211,8 @@ def main():
     print(f"SIFT_TUNNEL_TOKEN={TOKEN}", flush=True)
     print("=" * 60, flush=True)
     print("Paste both lines back to the agent.", flush=True)
+    with open("/tmp/sift_creds", "w") as f:
+        f.write(f"SIFT_TUNNEL_URL={url}\nSIFT_TUNNEL_TOKEN={TOKEN}\n")
     while True:
         time.sleep(3600)
 
