@@ -157,9 +157,12 @@ def step_python():
 # takes ~1h; this asset skips the compile entirely. Verified by asking the
 # binary for its device list (llama-server --list-devices => "CUDA0: ..."), which
 # also proves the bundled libggml-cuda loads against this machine's driver.
+# v2: rebuilt on 2026-09-08 from a Colab T4 session. v1's libggml-cuda.so was
+# built against a different Colab CUDA toolchain and reported no CUDA0 device
+# at runtime, forcing a 1h source build. v2 is verified in a clean dir.
 PREBUILT_URL = ("https://github.com/Gohomeroy/sift-gpu/releases/download/"
-                "llama-cuda-bundle/llama-cuda-bundle.tar.gz")
-PREBUILT_MD5 = "ee09dda197a73d5e6634d739d3b43cc2"
+                "llama-cuda-bundle/llama-cuda-bundle-v2.tar.gz")
+PREBUILT_MD5 = "88db97eb8aa086db894d04866b4c602c"
 
 def _md5(path):
     import hashlib
