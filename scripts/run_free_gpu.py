@@ -160,9 +160,25 @@ def step_python():
 # v2: rebuilt on 2026-09-08 from a Colab T4 session. v1's libggml-cuda.so was
 # built against a different Colab CUDA toolchain and reported no CUDA0 device
 # at runtime, forcing a 1h source build. v2 is verified in a clean dir.
+# v2 LOADING NOTE: llama-server is a thin launcher; it must dlopen its sibling
+# .so files and the real driver's libcuda.so.1. Colab puts the driver in
+# /usr/lib64-nvidia while /usr/local/cuda-*/compat shadows it with a stub that
+# fails CUDA init. We therefore export LD_LIBRARY_PATH = bundle dir + driver
+# dir BEFORE the --list-devices probe and in the spawn env, or the prebuilt
+# check falls through to a 1h source build.
 PREBUILT_URL = ("https://github.com/Gohomeroy/sift-gpu/releases/download/"
                 "llama-cuda-bundle/llama-cuda-bundle-v2.tar.gz")
 PREBUILT_MD5 = "88db97eb8aa086db894d04866b4c602c"
+
+# Directories to prepend to LD_LIBRARY_PATH so the (thin-launcher) llama-server
+# finds its bundled .so siblings plus the real NVIDIA driver libcuda.so.1.
+LLAMA_BIN_DIR = "/usr/local/bin"
+_DRIVER_DIRS = ["/usr/lib64-nvidia", "/usr/local/cuda/lib64",
+                "/usr/local/cuda-12.8/lib64"]
+def llama_ld_library_path():
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    dirs = [d for d in [LLAMA_BIN_DIR] + _DRIVER_DIRS if os.path.isdir(d)]
+    return ":".join(dirs + ([existing] if existing else []))
 
 def _md5(path):
     import hashlib
@@ -189,8 +205,10 @@ def try_prebuilt_llama(binary):
         subprocess.run(["tar", "-xzf", bundle, "-C", os.path.dirname(binary)],
                        check=True)
         sh(f"chmod +x {binary}")
+        env = dict(os.environ)
+        env["LD_LIBRARY_PATH"] = llama_ld_library_path()
         out = subprocess.run([binary, "--list-devices"], capture_output=True,
-                             text=True, timeout=60)
+                             text=True, timeout=60, env=env)
         if "CUDA0" in (out.stdout + out.stderr):
             return True
         print(f"!! cached llama-server has no CUDA0 device — will rebuild")
@@ -283,6 +301,7 @@ def start_services():
         "WORK_DIR": os.path.join(REPO_DIR, "tmp"),
         "QWEN8B_ENABLED": "1" if two_servers else "0",
         "QWEN_SERVER_URL": f"http://127.0.0.1:{QWEN_PORT}/v1",
+        "LD_LIBRARY_PATH": llama_ld_library_path(),
     })
 
     def bg(cmd, log, cwd=None):
