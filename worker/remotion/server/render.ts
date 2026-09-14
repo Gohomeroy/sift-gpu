@@ -74,8 +74,9 @@ export async function renderClip(opts: {
     outputLocation: outputPath,
     inputProps,
     frameRange: [0, frames - 1],
-    x264Preset: "faster",
-    crf: 18,
+    x264Preset: "ultrafast",
+    crf: 23,
+    chromiumOptions: { gl: "angle" },
   });
 
   return outputPath;
