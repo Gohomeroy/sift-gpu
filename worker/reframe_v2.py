@@ -22,17 +22,27 @@ _ENC = None
 
 
 def _encoder() -> str:
-    """Pick h264_nvenc (GPU) when available, else libx264 (CPU)."""
+    """Pick h264_nvenc (GPU) when actually usable, else libx264 (CPU).
+
+    Merely checking ffmpeg's encoder list is not enough: the worker can run
+    with CUDA_VISIBLE_DEVICES="" (to leave VRAM for a model server), which
+    still lists h264_nvenc but fails cuInit at encode time.  So probe a real
+    tiny null encode once and cache the result.
+    """
     global _ENC
     if _ENC is None:
+        _ENC = "libx264"
         try:
             r = subprocess.run(
-                ["ffmpeg", "-hide_banner", "-encoders"],
-                capture_output=True, text=True, timeout=15,
+                ["ffmpeg", "-hide_banner", "-loglevel", "error",
+                 "-f", "lavfi", "-i", "color=c=black:s=480x270:d=0.1",
+                 "-c:v", "h264_nvenc", "-an", "-f", "null", "-"],
+                capture_output=True, timeout=15,
             )
-            _ENC = "h264_nvenc" if "h264_nvenc" in r.stdout else "libx264"
+            if r.returncode == 0:
+                _ENC = "h264_nvenc"
         except Exception:
-            _ENC = "libx264"
+            pass
     return _ENC
 
 
