@@ -815,7 +815,6 @@ def main() -> None:
         print(f"[sift-worker] claimed {job['id']} — {job.get('title', '')}")
         try:
             process_job(job)
-            cleanup_job_dir(job["id"])
             print(f"[sift-worker] completed {job['id']}")
         except Exception as exc:
             traceback.print_exc()
@@ -823,6 +822,8 @@ def main() -> None:
                 db.fail_job(job["id"], f"{type(exc).__name__}: {exc}")
             except Exception:
                 pass
+        finally:
+            cleanup_job_dir(job["id"])
 
 
 if __name__ == "__main__":

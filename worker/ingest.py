@@ -150,20 +150,37 @@ def download_sections(
 
 
 def download_full_video(source_url: str, job_id: str) -> Path:
-    """Fallback when section downloads fail — full ≤1080p video."""
+    """Download the full video, stepping resolution down when needed.
+
+    yt-dlp can download a 1080p h264 stream that's ~5.7GB for a 2.5-hr VOD, and
+    merge holds video+audio `.part` + the merged mp4 on disk (~2x the final
+    size), which exhausts a disk shared with the model. Start crisp at 1080p
+    and only retry smaller on failure, so normal clips stay sharp while giant
+    long-form sources still come through.
+    """
     out_dir = config.WORK_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / "source.mp4"
-    got = _run_ytdlp(
-        [
-            "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/bv*+ba/b",
-            "--merge-output-format", "mp4",
-            "--no-playlist",
-            "-o", str(target),
-            source_url,
-        ],
-        "full-video",
-    )
-    if got is None:
-        raise RuntimeError("yt-dlp could not download this video at all.")
-    return got
+    for height in (1080, 720, 480):
+        got = _run_ytdlp(
+            [
+                "-f", f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/b[height<={height}]/b",
+                "--merge-output-format", "mp4",
+                "--no-playlist",
+                "-o", str(target),
+                source_url,
+            ],
+            f"full-video",
+        )
+        if got is not None:
+            return got
+        # Failed attempt can leave a multi-GB `.part`/`.f###.mp4`/`.temp.mp4`
+        # behind — clear it so the smaller-height retry doesn't inherit a
+        # half-full disk.
+        for leftover in out_dir.iterdir():
+            if leftover.name.startswith("source") and leftover.suffix in (".part", ".mp4", ".m4a"):
+                try:
+                    leftover.unlink()
+                except OSError:
+                    pass
+    raise RuntimeError("yt-dlp could not download this video at all.")

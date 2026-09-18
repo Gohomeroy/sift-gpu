@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { ActionState } from "@/lib/action-state";
 
 export async function createClipJobAction(
@@ -54,8 +55,23 @@ export async function deleteClipJobAction(
   formData: FormData,
 ): Promise<ActionState> {
   const supabase = await createClient();
+  const admin = createAdminClient();
   const jobId = String(formData.get("job_id") ?? "");
   const slug = String(formData.get("slug") ?? "");
+
+  const { data: jobPaths, error: pathError } = await supabase
+    .from("clips")
+    .select("storage_path")
+    .eq("job_id", jobId);
+  if (pathError) return { error: pathError.message, success: null };
+
+  const paths = (jobPaths ?? []).map((clip) => clip.storage_path);
+  if (paths.length > 0) {
+    const { error: removeError } = await admin.storage
+      .from("clips")
+      .remove(paths);
+    if (removeError) return { error: removeError.message, success: null };
+  }
 
   const { error } = await supabase.rpc("delete_clip_job", { p_job: jobId });
   if (error) return { error: error.message, success: null };
@@ -69,8 +85,21 @@ export async function deleteClipAction(
   formData: FormData,
 ): Promise<ActionState> {
   const supabase = await createClient();
+  const admin = createAdminClient();
   const clipId = String(formData.get("clip_id") ?? "");
   const slug = String(formData.get("slug") ?? "");
+
+  const { data: clipPath, error: pathError } = await supabase
+    .from("clips")
+    .select("storage_path")
+    .eq("id", clipId)
+    .single();
+  if (pathError) return { error: pathError.message, success: null };
+
+  const { error: removeError } = await admin.storage
+    .from("clips")
+    .remove([clipPath.storage_path]);
+  if (removeError) return { error: removeError.message, success: null };
 
   const { error } = await supabase.rpc("delete_clip", { p_clip: clipId });
   if (error) return { error: error.message, success: null };

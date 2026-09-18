@@ -165,7 +165,7 @@ export default async function Home() {
         </section>
 
         {/* The cycle, as a timeline. Illustrative pass — not live data. */}
-        <section aria-label="How a review cycle looks" className="w-full pb-2">
+        <section aria-label="How a review cycle looks" className="w-full overflow-x-auto pb-2">
           <div className="mb-1.5 flex h-3 items-end gap-[7px]" aria-hidden>
             {Array.from({ length: 40 }).map((_, i) => (
               <span
